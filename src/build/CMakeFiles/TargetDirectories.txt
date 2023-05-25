@@ -1,0 +1,3 @@
+/mnt/c/Users/romot/Desktop/demos/snn/leaky/src/build/CMakeFiles/leaky.dir
+/mnt/c/Users/romot/Desktop/demos/snn/leaky/src/build/CMakeFiles/edit_cache.dir
+/mnt/c/Users/romot/Desktop/demos/snn/leaky/src/build/CMakeFiles/rebuild_cache.dir
