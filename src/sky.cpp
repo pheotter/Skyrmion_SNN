@@ -14,6 +14,7 @@ Skyrmion::Skyrmion()
 	//DPRINTF(Skyrmion, "Skyrmion is created!\n");
 	//cout << "Skyrmion is created!\n";
 	_id = 0;
+	_intervalSize = 0;
 	shift_energy = 0;
 	insert_energy = 0;
 	delete_energy = 0;
@@ -38,6 +39,11 @@ Skyrmion::Skyrmion()
 	//gem5::registerExitCallback([this]() {outPut();}); //open
 }
 
+int Skyrmion::getIntervalSize() const
+{
+	return _intervalSize;
+}
+
 void Skyrmion::setId(int id)
 {
 	_id = id;
@@ -56,16 +62,85 @@ void Skyrmion::setWriteType(enum Write_Type write_type)
 SkyrmionWord::SkyrmionWord(): Skyrmion()
 {
 	_type = WORD_BASED;
+	entry = new sky_size_t [MAX_SIZE + 2 * OVER_HEAD + MAX_SIZE / DISTANCE + 1];
 	for (int i = 0; i < MAX_SIZE + 2 * OVER_HEAD + MAX_SIZE / DISTANCE + 1; i++){
 		entry[i] = 0;
 	}
+	checkFullArray = new int [MAX_SIZE/8];
 	memset(checkFullArray, 0, MAX_SIZE / 8 * sizeof(int));
+	n_checkFull = 0;
+}
+
+SkyrmionWord::SkyrmionWord(int intervalSize): Skyrmion()
+{
+	_type = WORD_BASED;
+	_intervalSize = intervalSize;
+	entry = new sky_size_t [intervalSize * DISTANCE + 2 * OVER_HEAD + intervalSize + 1];
+	for (int i = 0; i < intervalSize * DISTANCE + 2 * OVER_HEAD + intervalSize + 1; i++){
+		entry[i] = 0;
+	}
+	checkFullArray = new int [intervalSize * DISTANCE/8];
+	memset(checkFullArray, 0, intervalSize * DISTANCE / 8 * sizeof(int));
 	n_checkFull = 0;
 }
 
 sky_size_t SkyrmionWord::getEntry(int position) const
 {
 	return entry[position];
+}
+
+/**
+ * Calculate the value between the accessPort.
+ * Because the return type is unsigned long long,
+ * max DISTANCE will be limited to 64.
+ * If the DISTANCE is greater than 64, the return value will be incorrect.
+ * @param whichInterval The interval on the racetrack	skyrmion memory
+ *  for example, MAX_SIZE is 128, DISTANCE is 32, then interval will range 0~3
+ * @return The value calculated from the whichInterval
+ *  for example, if there is only bit stored with the rightmost,
+ *  the return value will be 1.
+*/
+unsigned long long SkyrmionWord::checkValueBWPorts(int whichInterval)
+{
+	if (_intervalSize == 0 && whichInterval > MAX_SIZE / DISTANCE){
+		cout << "checkValueBWPorts: whichInterval is invalid!" << endl;
+		exit(1);
+	}
+	if (_intervalSize != 0 && whichInterval > _intervalSize){
+		cout << "checkValueBWPorts: whichInterval is invalid!" << endl;
+		exit(1);
+	}
+	unsigned long long result = 0;
+	for (int i = 0; i < DISTANCE; i++){
+		result += ((unsigned int)entry[OVER_HEAD + (whichInterval + 1) * (DISTANCE + 1) - i - 1] << i);
+	}
+	return result;
+}
+
+/**
+ * Tell you which places contain skyrmions in the interval you request.
+ * @param whichInterval The interval on the racetrack	skyrmion memory
+ *  for example, MAX_SIZE is 128, DISTANCE is 32, then interval will range 0~3
+ * @return The positions where contain skyrmions
+ *  for example, if DISTANCE is 16(0000 0101 0001 0011)
+ *  the return vector will be {0,1,4,8,10}
+*/
+vector<int> SkyrmionWord::bitPositions(int whichInterval)
+{
+	if (_intervalSize == 0 && whichInterval > MAX_SIZE / DISTANCE){
+		cout << "bitPositions: whichInterval is invalid!" << endl;
+		exit(1);
+	}
+	if (_intervalSize != 0 && whichInterval > _intervalSize){
+		cout << "bitPositions: whichInterval is invalid!" << endl;
+		exit(1);
+	}
+	vector<int> result;
+	for (int i = 0; i < DISTANCE; i++){
+		if(entry[OVER_HEAD + (whichInterval + 1) * (DISTANCE + 1) - i - 1] == 1)
+			result.push_back(i);
+	}
+	return result;
 }
 
 int SkyrmionWord::getN_checkFull() const
@@ -81,18 +156,50 @@ void SkyrmionWord::setEntry(int position, sky_size_t value)
 SkyrmionBit::SkyrmionBit(): Skyrmion()
 {
 	_type = BIT_INTERLEAVED;
+	entries = new sky_size_t* [ROW];
+	for (int i = 0; i < ROW; i++){
+			entries[i] = new sky_size_t [MAX_SIZE + 2 * OVER_HEAD + MAX_SIZE / DISTANCE + 1];
+	}
 	for (int k = 0; k < ROW; k++){
 		for (int j = 0; j < MAX_SIZE + 2 * OVER_HEAD + MAX_SIZE / DISTANCE + 1; j++){
 			entries[k][j] = 0;
 		}
 	}
+	buffer = new int [MAX_SIZE*ROW/BUFFER_LENGTH];
 	for (int i = 0; i < ROW/BUFFER_LENGTH; i++){
 		for (int j = 0; j < MAX_SIZE; j++)
 			buffer[i * MAX_SIZE + j] = 0;
 	}
+	checkFullArray = new int [ROW / 8 * MAX_SIZE];
 	memset(checkFullArray, 0, ROW / 8 * MAX_SIZE * sizeof(int));
 	n_checkFull = 0;
+	blockUsedNumber = new Stat [MAX_SIZE];
 	memset(blockUsedNumber, 0, MAX_SIZE * sizeof(Stat));
+}
+
+SkyrmionBit::SkyrmionBit(int intervalSize): Skyrmion()
+{
+	_type = BIT_INTERLEAVED;
+	_intervalSize = intervalSize;
+	entries = new sky_size_t* [ROW];
+	for (int i = 0; i < ROW; i++){
+			entries[i] = new sky_size_t [intervalSize*DISTANCE + 2 * OVER_HEAD + intervalSize + 1];
+	}
+	for (int k = 0; k < ROW; k++){
+		for (int j = 0; j < intervalSize*DISTANCE + 2 * OVER_HEAD + intervalSize + 1; j++){
+			entries[k][j] = 0;
+		}
+	}
+	buffer = new int [intervalSize*DISTANCE*ROW/BUFFER_LENGTH];
+	for (int i = 0; i < ROW/BUFFER_LENGTH; i++){
+		for (int j = 0; j < intervalSize*DISTANCE; j++)
+			buffer[i * intervalSize*DISTANCE + j] = 0;
+	}
+	checkFullArray = new int [ROW / 8 * intervalSize*DISTANCE];
+	memset(checkFullArray, 0, ROW / 8 * intervalSize*DISTANCE * sizeof(int));
+	n_checkFull = 0;
+	blockUsedNumber = new Stat [intervalSize*DISTANCE];
+	memset(blockUsedNumber, 0, intervalSize*DISTANCE * sizeof(Stat));
 }
 
 sky_size_t SkyrmionBit::getEntries(int row, int col) const
@@ -221,7 +328,7 @@ Stat Skyrmion::getShtVrtcl_latcy_DMW() const
 */
 void SkyrmionWord::print() const
 {
-	for (int i = 0; i < 100; i++) //2 * OVER_HEAD + MAX_SIZE + MAX_SIZE / DISTANCE + 1
+	for (int i = 32+33*249; i < 32+33*251; i++) //2 * OVER_HEAD + MAX_SIZE + MAX_SIZE / DISTANCE + 1
     cout << i << " " << (int)entry[i] << endl;
 	cout << endl;
 }
@@ -304,11 +411,19 @@ Skyrmion::~Skyrmion()
 SkyrmionWord::~SkyrmionWord()
 {
 	//outPut();
+	delete [] entry;
+	delete [] checkFullArray;
 }
 
 SkyrmionBit::~SkyrmionBit()
 {
 	//outPut();
+	for (int i = 0; i < ROW; i++){
+		delete [] entries[i];
+	}
+	delete [] entries;
+	delete [] checkFullArray;
+	delete [] blockUsedNumber;
 }
 
 /**
@@ -393,7 +508,11 @@ int SkyrmionWord::determinePorts(Addr address, data_size_t size, int *portsBuffe
 */
 void SkyrmionWord::shift(int startPort, int endPort, int saveData)
 {
-	if (startPort < 0 || startPort > MAX_SIZE / DISTANCE + 2 || endPort < 0 || endPort > MAX_SIZE / DISTANCE + 2 || startPort == endPort){
+	if (_intervalSize == 0 && (startPort < 0 || startPort > MAX_SIZE / DISTANCE + 2 || endPort < 0 || endPort > MAX_SIZE / DISTANCE + 2 || startPort == endPort)){
+			cout << "Shift: start/end index is invalid!" << endl;
+			exit(1);
+	}
+	if (_intervalSize != 0 && (startPort < 0 || startPort > _intervalSize + 2 || endPort < 0 || endPort > _intervalSize + 2 || startPort == endPort)){
 			cout << "Shift: start/end index is invalid!" << endl;
 			exit(1);
 	}
@@ -454,7 +573,11 @@ void SkyrmionWord::shift(int startPort, int endPort, int saveData)
 */
 void SkyrmionBit::shift(int startPort, int endPort, Addr address, data_size_t size, int saveData)
 {
-	if (startPort < 0 || startPort > MAX_SIZE / DISTANCE + 2 || endPort < 0 || endPort > MAX_SIZE / DISTANCE + 2 || startPort == endPort){
+	if (_intervalSize == 0 && (startPort < 0 || startPort > MAX_SIZE / DISTANCE + 2 || endPort < 0 || endPort > MAX_SIZE / DISTANCE + 2 || startPort == endPort)){
+			cout << "Shift: start/end index is invalid!" << endl;
+			exit(1);
+	}
+	if (_intervalSize != 0 && (startPort < 0 || startPort > _intervalSize + 2 || endPort < 0 || endPort > _intervalSize + 2 || startPort == endPort)){
 			cout << "Shift: start/end index is invalid!" << endl;
 			exit(1);
 	}
@@ -556,13 +679,16 @@ void SkyrmionBit::shiftVertcl(int accessPort, Addr address, int updown, int save
  * Insert content(bit 0 or 1) at accessPort(excluding virtual access ports)
  * e.g. If set MAX_SIZE 128 and DISTANCE 32, accessPort includes 0~4
  * @param accessPort The access port which skyrmions could be injected
- * @param row The row of the entries, it doesn't matter for word-based if we set any number
  * @param content The data bit 0 or bit 1 will be inserted
  * @param saveData If 0 save energy data to the first statics, 1 to the second
 */
-void SkyrmionWord::insert(int accessPort, int row, sky_size_t content, int saveData)
+	void SkyrmionWord::insert(int accessPort, sky_size_t content, int saveData)
 {
-	if (accessPort < 0 || accessPort > MAX_SIZE / DISTANCE){
+	if (_intervalSize == 0 && (accessPort < 0 || accessPort > MAX_SIZE / DISTANCE)){
+		cout << "Insert: accessPort is invalid!" << endl;
+		exit(1);
+	}
+	if (_intervalSize != 0 && (accessPort < 0 || accessPort > _intervalSize)){
 		cout << "Insert: accessPort is invalid!" << endl;
 		exit(1);
 	}
@@ -589,7 +715,11 @@ void SkyrmionWord::insert(int accessPort, int row, sky_size_t content, int saveD
 */
 void SkyrmionBit::insert(int accessPort, int row, sky_size_t content, int saveData)
 {
-	if (accessPort < 0 || accessPort > MAX_SIZE / DISTANCE){
+	if (_intervalSize == 0 && (accessPort < 0 || accessPort > MAX_SIZE / DISTANCE)){
+		cout << "Insert: accessPort is invalid!" << endl;
+		exit(1);
+	}
+	if (_intervalSize != 0 && (accessPort < 0 || accessPort > _intervalSize)){
 		cout << "Insert: accessPort is invalid!" << endl;
 		exit(1);
 	}
@@ -617,13 +747,15 @@ void SkyrmionBit::insert(int accessPort, int row, sky_size_t content, int saveDa
  * Delete data at accessPort(excluding virtual access ports)
  * e.g. If set MAX_SIZE 128 and DISTANCE 32, accessPort includes 0~4
  * @param accessPort The access port which skyrmions could be deleted
- * @param row The row of the entries, it doesn't matter for word-based if we set any number
  * @param saveData If 0 save energy data to the first statics, 1 to the second
 */
-void SkyrmionWord::deleteSky(int accessPort, int row, int saveData)
+void SkyrmionWord::deleteSky(int accessPort, int saveData)
 {
-
-	if (accessPort < 0 || accessPort > MAX_SIZE / DISTANCE){
+	if (_intervalSize == 0 && (accessPort < 0 || accessPort > MAX_SIZE / DISTANCE)){
+		cout << "Delete: accessPort is invalid!" << endl;
+		exit(1);
+	}
+	if (_intervalSize != 0 && (accessPort < 0 || accessPort > _intervalSize)){
 		cout << "Delete: accessPort is invalid!" << endl;
 		exit(1);
 	}
@@ -647,7 +779,11 @@ void SkyrmionWord::deleteSky(int accessPort, int row, int saveData)
 */
 void SkyrmionBit::deleteSky(int accessPort, int row, int saveData)
 {
-	if (accessPort < 0 || accessPort > MAX_SIZE / DISTANCE){
+	if (_intervalSize == 0 && (accessPort < 0 || accessPort > MAX_SIZE / DISTANCE)){
+		cout << "Delete: accessPort is invalid!" << endl;
+		exit(1);
+	}
+	if (_intervalSize != 0 && (accessPort < 0 || accessPort > _intervalSize)){
 		cout << "Delete: accessPort is invalid!" << endl;
 		exit(1);
 	}
@@ -669,13 +805,16 @@ void SkyrmionBit::deleteSky(int accessPort, int row, int saveData)
  * Detect data at accessPort(excluding virtual access ports)
  * e.g. If set MAX_SIZE 128 and DISTANCE 32, accessPort includes 0~4
  * @param accessPort The access port which skyrmions could be detected
- * @param row The row of the entries, it doesn't matter for word-based if we set any number
  * @param saveData If 0 save energy data to the first statics, 1 to the second
  * @return If data is bit 0, return 0; If bit 1, return 1
 */
-sky_size_t SkyrmionWord::detect(int accessPort, int row, int saveData)
+sky_size_t SkyrmionWord::detect(int accessPort, int saveData)
 {
-	if (accessPort < 0 || accessPort > MAX_SIZE / DISTANCE){
+	if (_intervalSize == 0 && (accessPort < 0 || accessPort > MAX_SIZE / DISTANCE)){
+		cout << "Detect: accessPort is invalid!" << endl;
+		exit(1);
+	}
+	if (_intervalSize != 0 && (accessPort < 0 || accessPort > _intervalSize)){
 		cout << "Detect: accessPort is invalid!" << endl;
 		exit(1);
 	}
@@ -704,7 +843,11 @@ sky_size_t SkyrmionWord::detect(int accessPort, int row, int saveData)
 */
 sky_size_t SkyrmionBit::detect(int accessPort, int row, int saveData)
 {
-	if (accessPort < 0 || accessPort > MAX_SIZE / DISTANCE){
+	if (_intervalSize == 0 && (accessPort < 0 || accessPort > MAX_SIZE / DISTANCE)){
+		cout << "Detect: accessPort is invalid!" << endl;
+		exit(1);
+	}
+	if (_intervalSize != 0 && (accessPort < 0 || accessPort > _intervalSize)){
 		cout << "Detect: accessPort is invalid!" << endl;
 		exit(1);
 	}
@@ -731,13 +874,17 @@ sky_size_t SkyrmionBit::detect(int accessPort, int row, int saveData)
  * Read data with size bytes at address
  * @param address The address of the data which will be read
  * @param size Byte(s) of the data
- * @param type Type 0 if read one byte data at once, type 1 if read data parallel
+ * @param parallel parallel 0 if read one byte data at once, parallel 1 if read data parallel
  * @param saveData If 0 save energy data to the first statics, 1 to the second
  * @return Bytes of the data at address
 */
-sky_size_t *SkyrmionWord::read(Addr address, data_size_t size, int type, int saveData)
+sky_size_t *SkyrmionWord::read(Addr address, data_size_t size, int parallel, int saveData)
 {
-	if (address >= MAX_SIZE/8){
+	if (_intervalSize == 0 && address >= MAX_SIZE/8){
+		cout << "read: address is invalid (0 ~ " << MAX_SIZE/8-1 << ")" << endl;
+		exit(1);
+	}
+	if (_intervalSize != 0 && address >= MAX_SIZE/8){
 		cout << "read: address is invalid (0 ~ " << MAX_SIZE/8-1 << ")" << endl;
 		exit(1);
 	}
@@ -756,12 +903,12 @@ sky_size_t *SkyrmionWord::read(Addr address, data_size_t size, int type, int sav
 		}
 	}
 
-	if (type == 0) {
+	if (parallel == 0) {
 		sky_size_t *data = new sky_size_t [size * 8];
 		if (ports[0] > ports[1]){ // read from bit 0 to bit 31
 			for (int i = 0; i < size * 8; i++){
 				shift(ports[0], ports[1], saveData);
-				data[i] = detect(port, 0, saveData);
+				data[i] = detect(port, saveData);
 				if (saveData == 0){
 					detect_latency++;
 					shift_latency++;
@@ -773,7 +920,7 @@ sky_size_t *SkyrmionWord::read(Addr address, data_size_t size, int type, int sav
 		} else { // read from bit 31 to 0
 			for (int i = 0; i < size * 8; i++){
 				shift(ports[0], ports[1], saveData);
-				data[size * 8 - 1 - i] = detect(port + 1, 0, saveData);
+				data[size * 8 - 1 - i] = detect(port + 1, saveData);
 				if (saveData == 0){
 					detect_latency++;
 					shift_latency++;
@@ -793,14 +940,14 @@ sky_size_t *SkyrmionWord::read(Addr address, data_size_t size, int type, int sav
 			}
 		}
 		return data;
-	} else if (type == 1) {
+	} else if (parallel == 1) {
 		if (address % numAddrBtwPort != 0 && size % numAddrBtwPort == 0)
 			temp++;
 		sky_size_t *tmpBuffer = new sky_size_t [temp * DISTANCE];
 		for (int i = 0; i < DISTANCE; i++){ // read from bit 0 to bit 31
 			shift(ports[0], ports[1], saveData);
 			for (int j = 0; j < temp; j++){
-				tmpBuffer[j * DISTANCE + i] = detect(port + j, 0, saveData);
+				tmpBuffer[j * DISTANCE + i] = detect(port + j, saveData);
 			}
 		}
 		if (saveData == 0){
@@ -878,7 +1025,7 @@ sky_size_t *Skyrmion::byteToBit(data_size_t size, const sky_size_t *read)
  * Read data with size bytes at address
  * @param address The address of the data which will be read
  * @param size Byte(s) of the data
- * @param parallel parallel 0 if read one byte data at a once, type 1 if read data parallel
+ * @param parallel parallel 0 if read one byte data at a once, parallel 1 if read data parallel
  * @param saveData If 0 save energy data to the first statics, 1 to the second
  * @return Bytes of the data at address
 */
@@ -1055,8 +1202,12 @@ sky_size_t *SkyrmionBit::read(int block, Addr address, data_size_t size, int sav
 */
 void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *content, enum Write_Type type, int saveData)
 {
-	if (address >= MAX_SIZE/8){
+	if (_intervalSize == 0 && address >= MAX_SIZE/8){
 		cout << "write: address is invalid (0 ~ " << MAX_SIZE/8-1 << ")" << endl;
+		exit(1);
+	}
+	if (_intervalSize != 0 && address >= _intervalSize*4){
+		cout << "write: address is invalid (0 ~ " << _intervalSize*4-1 << ")" << endl;
 		exit(1);
 	}
 	int ports[2];
@@ -1089,7 +1240,7 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 				// 1. delete all
 				for (int i = 0; i < size * 8; i++){
 					shift(ports[0], ports[1], saveData);
-					deleteSky(port, 0, saveData);
+					deleteSky(port, saveData);
 					if (saveData == 0){
 						shift_latency++;
 						delete_latency++;
@@ -1102,14 +1253,14 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 				// 2. insert a skyrmion/non-skyrmion according to content
 				for (int i = 0; i < size * 8; i++){
 					if (*(content + size * 8 - 1 - i) == 1){
-						insert(port, 0, 1, saveData);
+						insert(port, 1, saveData);
 						if (saveData == 0){
 							insert_latency++;
 						} else if (saveData == 1){
 							insert_latency_DMW++;
 						}
 					} else {
-						insert(port, 0, 0, saveData);
+						insert(port, 0, saveData);
 					}
 					shift(ports[1], ports[0], saveData);
 					if (saveData == 0){
@@ -1131,7 +1282,7 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 				//1. delete all
 				for (int i = 0; i < size * 8; i++){
 					shift(ports[0], ports[1], saveData);
-					deleteSky(port + 1, 0, saveData);
+					deleteSky(port + 1, saveData);
 					if (saveData == 0){
 						shift_latency++;
 						delete_latency++;
@@ -1144,14 +1295,14 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 				//2. insert a skyrmion/non-skyrmion according to content
 				for (int i = 0; i < size * 8; i++){
 					if (*(content + i) == 1){
-						insert(port + 1, 0, 1, saveData);
+						insert(port + 1, 1, saveData);
 						if (saveData == 0){
 							insert_latency++;
 						} else if (saveData == 1){
 							insert_latency_DMW++;
 						}
 					} else {
-						insert(port + 1, 0, 0, saveData);
+						insert(port + 1, 0, saveData);
 					}
 					shift(ports[1], ports[0], saveData);
 					if (saveData == 0){
@@ -1181,7 +1332,7 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 					for (int i = 0; i < DISTANCE; i++){
 						shift(ports[0], ports[1], saveData);
 						for (int j = 0; j < temp; j++){
-							deleteSky(port + j, 0, saveData);
+							deleteSky(port + j, saveData);
 						}
 					}
 
@@ -1190,10 +1341,10 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						insrtKeep = false;
 						for (int j = 1; j <= temp; j++){
 							if (*(content + DISTANCE * j - i) == 1){
-								insert(port + j - 1, 0, 1, saveData);
+								insert(port + j - 1, 1, saveData);
 								insrtKeep = true;
 							} else {
-								insert(port + j - 1, 0, 0, saveData);
+								insert(port + j - 1, 0, saveData);
 							}
 						}
 						shift(ports[1], ports[0], saveData);
@@ -1213,7 +1364,7 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						shift(ports[0], ports[1], saveData);
 						for (int j = 0; j < temp; j++){
 							if (!(j == temp -1 && i >= (address + size) % numAddrBtwPort * 8))
-								deleteSky(port + j, 0, saveData);
+								deleteSky(port + j, saveData);
 						}
 					}
 					//2. insert a skyrmion/non-skyrmion according to content
@@ -1222,10 +1373,10 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						for (int j = 1; j <= temp; j++){
 							if (!(j == temp && i <= (numAddrBtwPort - (address + size) % numAddrBtwPort) * 8)){
 								if (*(content + DISTANCE * j - i) == 1){
-									insert(port + j - 1, 0, 1, saveData);
+									insert(port + j - 1, 1, saveData);
 									insrtKeep = true;
 								} else {
-									insert(port + j - 1, 0, 0, saveData);
+									insert(port + j - 1, 0, saveData);
 								}
 							}
 						}
@@ -1245,7 +1396,7 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						shift(ports[0], ports[1], saveData);
 						for (int j = 0; j < temp; j++){
 							if (!(j == 0 && (i < (address % numAddrBtwPort) * 8)))
-								deleteSky(port + j, 0, saveData);
+								deleteSky(port + j, saveData);
 						}
 					}
 					//2. insert a skyrmion/non-skyrmion according to content
@@ -1254,10 +1405,10 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						for (int j = 0; j < temp; j++){
 							if (!(j == 0 && i > (numAddrBtwPort - address % numAddrBtwPort) * 8)){
 								if (*(content + (numAddrBtwPort - address % numAddrBtwPort) * 8 + DISTANCE * j - i) == 1){
-									insert(port + j, 0, 1, saveData);
+									insert(port + j, 1, saveData);
 									insrtKeep = true;
 								} else {
-									insert(port + j, 0, 0, saveData);
+									insert(port + j, 0, saveData);
 								}
 							}
 						}
@@ -1278,7 +1429,7 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						shift(ports[0], ports[1], saveData);
 						for (int j = 0; j < temp; j++){
 							if (!((j == 0 && i < (address % numAddrBtwPort) * 8) || (j == temp -1 && i >= (address + size) % numAddrBtwPort * 8))){
-								deleteSky(port + j, 0, saveData);
+								deleteSky(port + j, saveData);
 							}
 						}
 					}
@@ -1288,10 +1439,10 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						for (int j = 0; j < temp; j++){
 							if (!((j == 0 && i > (numAddrBtwPort - address % numAddrBtwPort) * 8) || (j == temp - 1 && i <= (numAddrBtwPort - (address + size) % numAddrBtwPort) * 8))){
 								if (*(content + (numAddrBtwPort - address % numAddrBtwPort) * 8 + DISTANCE * j - i) == 1){
-									insert(port + j, 0, 1, saveData);
+									insert(port + j, 1, saveData);
 									insrtKeep = true;
 								} else {
-									insert(port + j, 0, 0, saveData);
+									insert(port + j, 0, saveData);
 								}
 							}
 						}
@@ -1335,18 +1486,18 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						shift_latency_DMW++;
 						detect_latency_DMW++;
 					}
-					if (detect(port, 0, saveData) != *(content + i)){
+					if (detect(port, saveData) != *(content + i)){
 						// test whether data are identical. if not, delete and then insert
 						if (*(content + i) == 0){
-							deleteSky(port, 0, saveData);
-							insert(port, 0, 0, saveData);
+							deleteSky(port, saveData);
+							insert(port, 0, saveData);
 							if (saveData == 0){
 								delete_latency++;
 							} else if (saveData == 1){
 								delete_latency_DMW++;
 							}
 						}	else {
-							insert(port, 0, 1, saveData);
+							insert(port, 1, saveData);
 							if (saveData == 0){
 								insert_latency++;
 							} else if (saveData == 1){
@@ -1365,18 +1516,18 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						shift_latency_DMW++;
 						detect_latency_DMW++;
 					}
-					if (detect(port + 1, 0, saveData) != *(content + size * 8 - 1 - i)){
+					if (detect(port + 1, saveData) != *(content + size * 8 - 1 - i)){
 						// test whether data are identical. if not, delete and then insert
 						if (*(content + size * 8 - 1 - i) == 0){
-							deleteSky(port + 1, 0, saveData);
-							insert(port + 1, 0, 0, saveData);
+							deleteSky(port + 1, saveData);
+							insert(port + 1, 0, saveData);
 							if (saveData == 0){
 								delete_latency++;
 							} else if (saveData == 1){
 								delete_latency_DMW++;
 							}
 						}	else {
-							insert(port + 1, 0, 1, saveData);
+							insert(port + 1, 1, saveData);
 							if (saveData == 0){
 								insert_latency++;
 							} else if (saveData == 1){
@@ -1407,13 +1558,13 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						insrtKeep = false;
 						delKeep = false;
 						for (int j = 0; j < temp; j++){
-							if (detect(port + j, 0, saveData) != *(content + DISTANCE * j + i)){
+							if (detect(port + j, saveData) != *(content + DISTANCE * j + i)){
 								if (*(content + DISTANCE * j + i) == 0){
-									deleteSky(port + j, 0, saveData);
-									insert(port + j, 0, 0, saveData);
+									deleteSky(port + j, saveData);
+									insert(port + j, 0, saveData);
 									delKeep = true;
 								}	else {
-									insert(port + j, 0, 1, saveData);
+									insert(port + j, 1, saveData);
 									insrtKeep = true;
 								}
 							}
@@ -1441,13 +1592,13 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						delKeep = false;
 						for (int j = 0; j < temp; j++){
 							if (!(j == temp -1 && i >= (address + size) % numAddrBtwPort * 8)){
-								if (detect(port + j, 0, saveData) != *(content + DISTANCE * j + i)){
+								if (detect(port + j, saveData) != *(content + DISTANCE * j + i)){
 									if (*(content + DISTANCE * j + i) == 0){
-										deleteSky(port + j, 0, saveData);
-										insert(port + j, 0, 0, saveData);
+										deleteSky(port + j, saveData);
+										insert(port + j, 0, saveData);
 										delKeep = true;
 									}	else {
-										insert(port + j, 0, 1, saveData);
+										insert(port + j, 1, saveData);
 										insrtKeep = true;
 									}
 								}
@@ -1476,13 +1627,13 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						delKeep = false;
 						for (int j = 0; j < temp; j++){
 							if (!(j == 0 && (i < (address % numAddrBtwPort) * 8))) {
-								if (detect(port + j, 0, saveData) != *(content - address % numAddrBtwPort * 8 + DISTANCE * j + i)){
+								if (detect(port + j, saveData) != *(content - address % numAddrBtwPort * 8 + DISTANCE * j + i)){
 									if (*(content - address % numAddrBtwPort * 8 + DISTANCE * j + i) == 0){
-										deleteSky(port + j, 0, saveData);
-										insert(port + j, 0, 0, saveData);
+										deleteSky(port + j, saveData);
+										insert(port + j, 0, saveData);
 										delKeep = true;
 									}	else {
-										insert(port + j, 0, 1, saveData);
+										insert(port + j, 1, saveData);
 										insrtKeep = true;
 									}
 								}
@@ -1511,13 +1662,13 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						delKeep = false;
 						for (int j = 0; j < temp; j++){
 							if (!((j == 0 && (i < (address % numAddrBtwPort) * 8)) || (j == temp -1 && i >= (address + size) % numAddrBtwPort * 8))) {
-								if (detect(port + j, 0, saveData) != *(content - address % numAddrBtwPort * 8 + DISTANCE * j + i)){
+								if (detect(port + j, saveData) != *(content - address % numAddrBtwPort * 8 + DISTANCE * j + i)){
 									if (*(content - address % numAddrBtwPort * 8 + DISTANCE * j + i) == 0){
-										deleteSky(port + j, 0, saveData);
-										insert(port + j, 0, 0, saveData);
+										deleteSky(port + j, saveData);
+										insert(port + j, 0, saveData);
 										delKeep = true;
 									}	else {
-										insert(port + j, 0, 1, saveData);
+										insert(port + j, 1, saveData);
 										insrtKeep = true;
 									}
 								}
@@ -1588,7 +1739,7 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						detect_latency_DMW++;
 						shift_latency_DMW++;
 					}
-					if (detect(port, 0, saveData) == 0){ // no skyrmion
+					if (detect(port, saveData) == 0){ // no skyrmion
 						shift(ports[0], ports[0] - 1, saveData);
 					} else { // a skyrmion
 						shift(ports[0], ports[1], saveData);
@@ -1614,7 +1765,7 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 						detect_latency_DMW++;
 						shift_latency_DMW++;
 					}
-					if (detect(port + 1, 0, saveData) == 0){ // no skyrmion
+					if (detect(port + 1, saveData) == 0){ // no skyrmion
 						shift(ports[0], ports[0] + 1, saveData);
 					} else {
 						shift(ports[0], ports[1], saveData);
@@ -1633,14 +1784,14 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 					}
 					if (*(content + size * 8 - 1 - i) == 0) {
 						shift(ports[0] - 1, ports[0], saveData);
-						insert(port, 0, 0, saveData);
+						insert(port, 0, saveData);
 					} else {
 						if (sky_count > 0) {
 							shift(ports[1], ports[0], saveData);
 							sky_count--;
 						} else {
 							shift(ports[0] - 1, ports[0], saveData);
-							insert(port, 0, 1, saveData);
+							insert(port, 1, saveData);
 							if (saveData == 0){
 								insert_latency++;
 							} else if (saveData == 1){
@@ -1668,14 +1819,14 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 					}
 					if (*(content + i) == 0){
 						shift(ports[0] + 1, ports[0], saveData);
-						insert(port + 1, 0, 0, saveData);
+						insert(port + 1, 0, saveData);
 					} else {
 						if (sky_count > 0) {
 							shift(ports[1], ports[0], saveData);
 							sky_count--;
 						} else {
 							shift(ports[0] + 1, ports[0], saveData);
-							insert(port + 1, 0, 1, saveData);
+							insert(port + 1, 1, saveData);
 							if (saveData == 0){
 								insert_latency++;
 							} else if (saveData == 1){
@@ -1700,10 +1851,10 @@ void SkyrmionWord::write(Addr address, data_size_t size, const sky_size_t *conte
 			while (sky_count > 0){
 				if (ports[0] > ports[1]){
 					shift(ports[1], port + 1, saveData);
-					deleteSky(port, 0, saveData);
+					deleteSky(port, saveData);
 				}	else {
 					shift(ports[1], port + 2, saveData);
-					deleteSky(port + 1, 0, saveData);
+					deleteSky(port + 1, saveData);
 				}
 				sky_count--;
 				if (saveData == 0){

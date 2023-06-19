@@ -10,8 +10,8 @@
 #include <vector>
 
 #define MAX_SIZE 2048
-#define OVER_HEAD 16
-#define DISTANCE 16
+#define OVER_HEAD 32
+#define DISTANCE 32
 #define ROW 512 // block size (unit: bits)
 #define BUFFER_LENGTH 8
 #define SHIFT 20 //energy
@@ -55,6 +55,7 @@ protected:
 	int _id;
 	enum Write_Type _write_type;
 	enum Method_Type _type;
+	int _intervalSize;
 	// down statics
 	Stat shift_energy;
 	Stat insert_energy;
@@ -81,6 +82,7 @@ protected:
 public:
 	Skyrmion();
 	virtual ~Skyrmion();
+	int getIntervalSize() const;
 	Stat getSht_engy() const;
 	Stat getIns_engy() const;
 	Stat getDel_engy() const;
@@ -106,9 +108,6 @@ public:
 	void setWriteType(enum Write_Type write_type);
 	int getWriteType() const;
 	virtual void print() const = 0;
-	virtual void insert(int accessPort, int row, sky_size_t content, int saveData) = 0; //content is bit 0 or 1
-	virtual void deleteSky(int accessPort, int row, int saveData) = 0;
-	virtual sky_size_t detect(int accessPort, int row, int saveData) = 0;
 	static sky_size_t *bitToByte(data_size_t size, sky_size_t *read);
 	static sky_size_t *byteToBit(data_size_t size, const sky_size_t *content);
 	void outPut(void);
@@ -116,40 +115,44 @@ public:
 
 class SkyrmionWord: public Skyrmion {
 protected:
-	sky_size_t entry[MAX_SIZE + 2 * OVER_HEAD + MAX_SIZE / DISTANCE + 1];
-	int checkFullArray[MAX_SIZE/8];
+	sky_size_t *entry;
+	int *checkFullArray;
 	int n_checkFull;
 private:
-	sky_size_t *read(Addr address, data_size_t size, int type, int saveData);
+	sky_size_t *read(Addr address, data_size_t size, int parallel, int saveData);
 	void write(Addr address, data_size_t size, const sky_size_t *content, enum Write_Type type, int saveData);
 
 public:
 	SkyrmionWord();
+	SkyrmionWord(int weightSize);
 	~SkyrmionWord() override;
 	void print() const override;
+	unsigned long long checkValueBWPorts(int whichInterval);
+	vector<int> bitPositions(int whichInterval);
 	sky_size_t getEntry(int position) const;
 	void setEntry(int position, sky_size_t value);
 	int getN_checkFull() const;
 	int determinePorts(Addr address, data_size_t size, int *portsBuffer) const;
 	void shift(int startPort, int endPort, int saveData); //saveData 1:save data to DMW
-	void insert(int accessPort, int row, sky_size_t content, int saveData) override; //content is bit 0 or 1
-	void deleteSky(int accessPort, int row, int saveData) override;
-	sky_size_t detect(int accessPort, int row, int saveData) override;
-	sky_size_t *readData(Addr address, data_size_t size, int type, int saveData); // type 1: modified
+	void insert(int accessPort, sky_size_t content, int saveData); //content is bit 0 or 1
+	void deleteSky(int accessPort, int saveData);
+	sky_size_t detect(int accessPort, int saveData);
+	sky_size_t *readData(Addr address, data_size_t size, int parallel, int saveData); // type 1: parallel
 	void writeData(Addr address, data_size_t size, const sky_size_t *content, enum Write_Type type, int saveData);
 	bool isFull();
 };
 
 class SkyrmionBit: public Skyrmion {
 protected:
-	sky_size_t entries[ROW][MAX_SIZE + 2 * OVER_HEAD + MAX_SIZE / DISTANCE + 1];
-	int buffer[MAX_SIZE*ROW/BUFFER_LENGTH];
-	int checkFullArray[ROW / 8 * MAX_SIZE];
+	sky_size_t **entries;
+	int *buffer;
+	int *checkFullArray;
 	int n_checkFull;
-	Stat blockUsedNumber[MAX_SIZE];
+	Stat *blockUsedNumber;
 
 public:
 	SkyrmionBit();
+	SkyrmionBit(int size);
 	~SkyrmionBit() override;
 	void print() const override;
 	sky_size_t getEntries(int row, int col) const;
@@ -159,9 +162,9 @@ public:
 	int determinePorts(int block, int *portsBuffer) const;
 	void shift(int startPort, int endPort, Addr address, data_size_t size, int saveData);
 	void shiftVertcl(int accessPort, Addr address, int updown, int saveData); //updown: up = 1, down = 0
-	void insert(int accessPort, int row, sky_size_t content, int saveData) override; //content is bit 0 or 1
-	void deleteSky(int accessPort, int row, int saveData) override;
-	sky_size_t detect(int accessPort, int row, int saveData) override;
+	void insert(int accessPort, int row, sky_size_t content, int saveData); //content is bit 0 or 1
+	void deleteSky(int accessPort, int row, int saveData);
+	sky_size_t detect(int accessPort, int row, int saveData);
 	sky_size_t *read(int block, Addr address, data_size_t size, int saveData);
 	void write(int block, Addr address, data_size_t size, const sky_size_t *content, enum Write_Type type, int saveData);
 	void bitDCW(int port, Addr address, sky_size_t *content1, sky_size_t *ptr, bool &delKeep, bool &insrtKeep, int saveData);

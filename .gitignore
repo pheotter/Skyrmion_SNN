@@ -1,0 +1,10 @@
+*.pt
+venv
+obj
+bin
+*.egg-info
+dist
+data
+build
+.git
+__pycache__
