@@ -11,10 +11,10 @@ Training and inferencing neural network are computationally expensive in terms o
 
 3. **PIP Dependencies** - Once your virtual environment is setup and running, install the required dependencies by running:
 
-```bash
-pip3 install -r requirements.txt
-```
-All required packages are included in the requirements file.
+  ```bash
+  pip3 install -r requirements.txt
+  ```
+  All required packages are included in the requirements file.
 
 4. **LibTorch** - Download ZIP archives containing the latest LibTorch distribution on [PyTorch website](https://pytorch.org/get-started/locally/) and unzip it.
 
@@ -31,3 +31,14 @@ python3 setup.py install
 ```bash
 python3 function.py
 ```
+## Describe the idea
+I'll use two methods to implement the idea and take the dataset MNIST for example.
+### Method I
+- Each SK-RM represents one neuron
+- I'll use 32 bits to represent the values of membrane potential, weights and bias (including the sign bit.)
+- The first distance between two access ports stores the value of membrane potential for each neuron.
+- The second distance between two access ports stores the rough value of the weight between this neuron and the first neuron of the prvious layer.
+- The third distance between two access ports stores the rough value of the weight between this neuron and the second neuron of the prvious layer, and so on.
+- The last distance between two access ports stores the rough value of the bias of this neuron.
+Please see the picture below:
+![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky1.png)
