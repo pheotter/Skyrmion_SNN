@@ -285,41 +285,16 @@ TEST(checkSkyrmionBitWithSize, case1)
 TEST(checkDeterminePorts, case1)
 {
   SkyrmionWord test;
-  int ports[2];
   if (DISTANCE == 16){
-    int moves = test.determinePorts(68, 3, ports);
-    ASSERT_EQ(37, ports[0]);
-    ASSERT_EQ(0, ports[1]);
-    ASSERT_EQ(0, moves);
-    moves = test.determinePorts(69, 3,ports);
-    ASSERT_EQ(37, ports[0]);
-    ASSERT_EQ(0, ports[1]);
-    ASSERT_EQ(0, moves);
-    moves = test.determinePorts(69, 1, ports);
-    ASSERT_EQ(35, ports[0]);
-    ASSERT_EQ(MAX_SIZE/DISTANCE+2, ports[1]);
-    ASSERT_EQ(0, moves);
-    moves = test.determinePorts(69, 8, ports);
-    ASSERT_EQ(40, ports[0]);
-    ASSERT_EQ(0, ports[1]);
-    ASSERT_EQ(0, moves);
+    ASSERT_EQ(37, test.determinePorts(68, 3));
+    ASSERT_EQ(37, test.determinePorts(69, 3));
+    ASSERT_EQ(36, test.determinePorts(69, 1));
+    ASSERT_EQ(40, test.determinePorts(69, 8));
   } else if (DISTANCE == 32){
-    int moves = test.determinePorts(68, 3, ports);
-    ASSERT_EQ(19, ports[0]); //Dis:32->19  37
-    ASSERT_EQ(0, ports[1]);
-    ASSERT_EQ(0, moves);
-    moves = test.determinePorts(69, 3,ports);
-    ASSERT_EQ(18, ports[0]); //Dis:32->18
-    ASSERT_EQ(MAX_SIZE/DISTANCE+2, ports[1]); //Dis:32->65
-    ASSERT_EQ(0, moves);
-    moves = test.determinePorts(69, 1, ports);
-    ASSERT_EQ(19, ports[0]);
-    ASSERT_EQ(0, ports[1]);
-    ASSERT_EQ(8, moves);
-    moves = test.determinePorts(69, 8, ports);
-    ASSERT_EQ(21, ports[0]);
-    ASSERT_EQ(0, ports[1]);
-    ASSERT_EQ(0, moves);
+    ASSERT_EQ(19, test.determinePorts(68, 3)); //Dis:32->19  37
+    ASSERT_EQ(19, test.determinePorts(69, 3)); //Dis:32->18
+    ASSERT_EQ(19, test.determinePorts(69, 1));
+    ASSERT_EQ(21, test.determinePorts(69, 8));
   }
 }
 
@@ -444,17 +419,6 @@ TEST(checkDeterminePortsBit, case1)
   }
 }
 
-TEST(checkValueBWPorts, case1)
-{
-  if (DISTANCE == 32){
-    SkyrmionWord test;
-    sky_size_t arr[4] = {171, 134, 0, 0};
-    //10101011  10000110  0  0
-    test.writeData(0, 4, arr, DCW, 0);
-    ASSERT_EQ(2877685760, test.checkValueBWPorts(0));
-  }
-}
-
 TEST(checkBitPositions, case1)
 {
   if (DISTANCE == 32){
@@ -463,7 +427,6 @@ TEST(checkBitPositions, case1)
     //10101011  10000110  0  0
     test.writeData(996, 4, arr, DCW, 0);
     vector<int> res = test.bitPositions(249);
-    test.print();
     ASSERT_EQ(8, res.size());
     vector<int> output = {17,18,23,24,25,27,29,31};
     ASSERT_EQ(output, res);
@@ -3899,6 +3862,8 @@ TEST(checkWritePermutationWrite, case1)
   wAdd = 249;
   wSize = 1;
   start = 0;
+  sky_size_t new_data_bit2[16]={0,0,0,0,0,0,0,0,
+                                0,1,1,1,1,0,0,0};
   test.writeData(wAdd, wSize, data+start, PERMUTATION_WRITE, 0);
   ptr = wordInsert(wAdd,wSize, data_bit+24, data_bit+start*8, PERMUTATION_WRITE);
   int e12 = ptr[0];

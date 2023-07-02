@@ -1,4 +1,5 @@
 *.pt
+*.pth
 venv
 obj
 bin
@@ -8,3 +9,4 @@ data
 build
 .git
 __pycache__
+

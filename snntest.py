@@ -1,6 +1,6 @@
 import snntorch as snn
-from snntorch import spikeplot as splt
-from snntorch import spikegen
+# from snntorch import spikeplot as splt
+# from snntorch import spikegen
 
 import torch
 import torch.nn as nn
@@ -10,13 +10,9 @@ from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
 import numpy as np
 import itertools
-from copy import deepcopy
 
 # dataloader arguments
 batch_size = 128
-
-# save model state_dict
-FILE = 'model_state_dict.pt'
 
 # Network Architecture
 num_inputs = 28*28
@@ -26,23 +22,6 @@ num_outputs = 10
 # Temporal Dynamics
 num_steps = 25
 beta = 0.95
-
-dtype = torch.float
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-
-# Define a transform
-transform = transforms.Compose([
-            transforms.Resize((28, 28)),
-            transforms.Grayscale(),
-            transforms.ToTensor(),
-            transforms.Normalize((0,), (1,))])
-
-mnist_train = datasets.MNIST(root="data", train=True, download=True, transform=transform)
-mnist_test = datasets.MNIST(root="data", train=False, download=True, transform=transform)
-
-# Create DataLoaders
-train_loader = DataLoader(mnist_train, batch_size=batch_size, shuffle=True, drop_last=True)
-test_loader = DataLoader(mnist_test, batch_size=batch_size, shuffle=True, drop_last=True)
 
 # Define Network
 class Net(nn.Module):
@@ -79,10 +58,6 @@ class Net(nn.Module):
 
         return torch.stack(spk2_rec, dim=0), torch.stack(mem2_rec, dim=0)
 
-# Load the network onto CUDA if available
-net = Net().to(device)
-bef_weight = net.fc1.weight
-
 # pass data into the network, sum the spikes over time
 # and compare the neuron with the highest number of spikes
 # with the target
@@ -108,154 +83,135 @@ def train_printer(
     print_batch_accuracy(test_data, test_targets, train=False)
     print("\n")
 
-# loss = nn.CrossEntropyLoss()
-# optimizer = torch.optim.Adam(net.parameters(), lr=5e-4, betas=(0.9, 0.999))
-#
-# data, targets = next(iter(train_loader))
-# test_data, test_targets = next(iter(test_loader))
-# print(f"test size = {test_data.size()}")
-# print(f"view test size = {test_data.view(-1, 28).size()}")
-# data = data.to(device)
-# targets = targets.to(device)
-#
-# spk_rec, mem_rec = net(data.view(batch_size, -1))
-# print(mem_rec.size())
-#
-# # initialize the total loss value
-# loss_val = torch.zeros((1), dtype=dtype, device=device)
-#
-# # sum loss at every step
-# for step in range(num_steps):
-#   loss_val += loss(mem_rec[step], targets)
-#
-# print(f"Training loss: {loss_val.item():.3f}")
-#
-# print_batch_accuracy(data, targets, train=True)
-#
-# # clear previously stored gradients
-# optimizer.zero_grad()
-#
-# # calculate the gradients
-# loss_val.backward()
-#
-# # weight update
-# optimizer.step()
-#
-# # calculate new network outputs using the same data
-# spk_rec, mem_rec = net(data.view(batch_size, -1))
-#
-# # initialize the total loss value
-# loss_val = torch.zeros((1), dtype=dtype, device=device)
-#
-# # sum loss at every step
-# for step in range(num_steps):
-#   loss_val += loss(mem_rec[step], targets)
-#
-# print(f"Training loss: {loss_val.item():.3f}")
-# print_batch_accuracy(data, targets, train=True)
-num_epochs = 1
-loss_hist = []
-test_loss_hist = []
-counter = 0
+if __name__ == '__main__':
 
-loss = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(net.parameters(), lr=5e-4, betas=(0.9, 0.999))
+    dtype = torch.float
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+    # Define a transform
+    transform = transforms.Compose([
+                transforms.Resize((28, 28)),
+                transforms.Grayscale(),
+                transforms.ToTensor(),
+                transforms.Normalize((0,), (1,))])
+
+    mnist_train = datasets.MNIST(root="data", train=True, download=True, transform=transform)
+    mnist_test = datasets.MNIST(root="data", train=False, download=True, transform=transform)
+
+    # Create DataLoaders
+    train_loader = DataLoader(mnist_train, batch_size=batch_size, shuffle=True, drop_last=True)
+    test_loader = DataLoader(mnist_test, batch_size=batch_size, shuffle=True, drop_last=True)
+
+    num_epochs = 1
+    loss_hist = []
+    test_loss_hist = []
+    counter = 0
+    net = Net().to(device)
+    # bef_weight = net.fc1.weight
+
+    loss = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(net.parameters(), lr=5e-4, betas=(0.9, 0.999))
 
 
-# Outer training loop
-for epoch in range(num_epochs):
-    iter_counter = 0
-    train_batch = iter(train_loader)
+    # Outer training loop
+    for epoch in range(num_epochs):
+        iter_counter = 0
+        train_batch = iter(train_loader)
 
-    # Minibatch training loop
-    for data, targets in train_batch:
+        # Minibatch training loop
+        for data, targets in train_batch:
+            data = data.to(device)
+            targets = targets.to(device)
+
+            # forward pass
+            net.train()
+            spk_rec, mem_rec = net(data.view(batch_size, -1))
+            # print(f"mem_rec size = {mem_rec.size()}") -> mem_rec size = torch.Size([25, 128, 10])
+
+            # initialize the loss & sum over time
+            loss_val = torch.zeros((1), dtype=dtype, device=device)
+            for step in range(num_steps):
+                loss_val += loss(mem_rec[step], targets)
+                # print(f"step = {step}, mem_rec = {mem_rec[step]}, loss_val = {loss_val}")
+                # mem_rec size [25, 128. 784]
+                # loss_val size [128], sum of the 128 values
+
+            # Gradient calculation + weight update
+            optimizer.zero_grad()
+            loss_val.backward()
+            optimizer.step()
+
+            # Store loss history for future plotting
+            loss_hist.append(loss_val.item())
+
+            # Test set
+            with torch.no_grad():
+                net.eval()
+                test_data, test_targets = next(iter(test_loader))
+                test_data = test_data.to(device)
+                test_targets = test_targets.to(device)
+
+                # Test set forward pass
+                test_spk, test_mem = net(test_data.view(batch_size, -1))
+
+                # Test set loss
+                test_loss = torch.zeros((1), dtype=dtype, device=device)
+                for step in range(num_steps):
+                    test_loss += loss(test_mem[step], test_targets)
+                test_loss_hist.append(test_loss.item())
+
+                # Print train/test loss/accuracy
+                if counter % 50 == 0:
+                    train_printer(data, targets, epoch, counter, iter_counter,
+                        loss_hist, test_loss_hist, test_data, test_targets)
+                counter += 1
+                iter_counter +=1
+
+
+    # TEST SET ACCURACY
+    total = 0
+    correct = 0
+
+    # drop_last switched to False to keep all samples
+    test_loader = DataLoader(mnist_test, batch_size=batch_size, shuffle=True, drop_last=False)
+
+    with torch.no_grad():
+      net.eval()
+      i = 0
+      for data, targets in test_loader:
+        print(f"i = {i}")
+        i += 1
         data = data.to(device)
         targets = targets.to(device)
+        # print(f"data shape: {data.size()}") -> data shape: torch.Size([128, 1, 28, 28])
+        # print(f"targets shape: {targets.size()}") -> targets shape: torch.Size([128])
 
         # forward pass
-        net.train()
-        spk_rec, mem_rec = net(data.view(batch_size, -1))
-        # print(f"mem_rec size = {mem_rec.size()}") -> mem_rec size = torch.Size([25, 128, 10])
+        test_spk, _ = net(data.view(data.size(0), -1))
+        # print(f"data.view(data.size(0), -1) size: {data.view(data.size(0), -1).size()}") -> torch.Size([128, 784]
+        # print(f"test_spk size: {test_spk.size()}") -> test_spk size: torch.Size([25, 128, 10])
 
-        # initialize the loss & sum over time
-        loss_val = torch.zeros((1), dtype=dtype, device=device)
-        for step in range(num_steps):
-            loss_val += loss(mem_rec[step], targets)
-            # print(f"step = {step}, mem_rec = {mem_rec[step]}, loss_val = {loss_val}")
-            # mem_rec size [25, 128. 784]
-            # loss_val size [128], sum of the 128 values
+        # calculate total accuracy
+        _, predicted = test_spk.sum(dim=0).max(1)
+        total += targets.size(0)
+        correct += (predicted == targets).sum().item()
 
-        # Gradient calculation + weight update
-        optimizer.zero_grad()
-        loss_val.backward()
-        optimizer.step()
+    print(f"Total correctly classified test set images: {correct}/{total}")
+    print(f"Test Set Accuracy: {100 * correct / total:.2f}%")
 
-        # Store loss history for future plotting
-        loss_hist.append(loss_val.item())
+    print(f"net: {net}")
+    print(f"weight size: {net.fc1.weight.size()}")
+    print(f"bias size: {net.fc1.bias.size()}")
 
-        # Test set
-        with torch.no_grad():
-            net.eval()
-            test_data, test_targets = next(iter(test_loader))
-            test_data = test_data.to(device)
-            test_targets = test_targets.to(device)
+    fc1_weight = net.fc1.weight
+    fc2_weight = net.fc2.weight
+    fc1_bias = net.fc1.bias
+    fc2_bias = net.fc2.bias
 
-            # Test set forward pass
-            test_spk, test_mem = net(test_data.view(batch_size, -1))
+    # save model state_dict
+    FILE = 'model_state_dict.pth'
+    print("Model's state_dict:")
+    for param_tensor in net.state_dict():
+        print(param_tensor, "\t", net.state_dict()[param_tensor].size())
 
-            # Test set loss
-            test_loss = torch.zeros((1), dtype=dtype, device=device)
-            for step in range(num_steps):
-                test_loss += loss(test_mem[step], test_targets)
-            test_loss_hist.append(test_loss.item())
-
-            # Print train/test loss/accuracy
-            if counter % 50 == 0:
-                train_printer(data, targets, epoch, counter, iter_counter,
-                    loss_hist, test_loss_hist, test_data, test_targets)
-            counter += 1
-            iter_counter +=1
-
-
-# TEST SET ACCURACY
-total = 0
-correct = 0
-
-# drop_last switched to False to keep all samples
-test_loader = DataLoader(mnist_test, batch_size=batch_size, shuffle=True, drop_last=False)
-
-with torch.no_grad():
-  net.eval()
-  for data, targets in test_loader:
-    data = data.to(device)
-    targets = targets.to(device)
-    # print(f"data shape: {data.size()}") -> data shape: torch.Size([128, 1, 28, 28])
-    # print(f"targets shape: {targets.size()}") -> targets shape: torch.Size([128])
-
-    # forward pass
-    test_spk, _ = net(data.view(data.size(0), -1))
-    # print(f"data.view(data.size(0), -1) size: {data.view(data.size(0), -1).size()}") -> torch.Size([128, 784]
-    # print(f"test_spk size: {test_spk.size()}") -> test_spk size: torch.Size([25, 128, 10])
-
-    # calculate total accuracy
-    _, predicted = test_spk.sum(dim=0).max(1)
-    total += targets.size(0)
-    correct += (predicted == targets).sum().item()
-
-print(f"Total correctly classified test set images: {correct}/{total}")
-print(f"Test Set Accuracy: {100 * correct / total:.2f}%")
-
-print(f"net: {net}")
-print(f"weight size: {net.fc1.weight.size()}")
-print(f"bias size: {net.fc1.bias.size()}")
-
-fc1_weight = net.fc1.weight
-fc2_weight = net.fc2.weight
-fc1_bias = net.fc1.bias
-fc2_bias = net.fc2.bias
-
-print("Model's state_dict:")
-for param_tensor in net.state_dict():
-    print(param_tensor, "\t", net.state_dict()[param_tensor].size())
-
-torch.save(net.state_dict(), FILE)
+    torch.save(net.state_dict(), FILE)

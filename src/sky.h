@@ -119,20 +119,24 @@ protected:
 	int *checkFullArray;
 	int n_checkFull;
 private:
-	sky_size_t *read(Addr address, data_size_t size, int parallel, int saveData);
+	sky_size_t *read(Addr address, data_size_t size, int saveData);
 	void write(Addr address, data_size_t size, const sky_size_t *content, enum Write_Type type, int saveData);
-
+	void Naive_Traditional_delete(int shiftStartPort, int shiftEndPort, int delPort, int length, int saveData);
+	void Naive_Traditional_insert(int shiftStartPort, int shiftEndPort, int insertPort, int length, const sky_size_t *content, int saveData);
+	void Naive(int port, int length, int minRedundant, vector<sky_size_t> &content, int saveData);
+	void DCW_Traditional(int shiftStartPort, int shiftEndPort, int port, int length, const sky_size_t *content, int saveData);
+	void dcw(int port, int length, int frontRedundant, int backRedundant, vector<sky_size_t> &content, int saveData);
+	void pw(int shiftStartPort, int port, int length, int frontRedundant, int backRedundant, vector<sky_size_t> &content, int saveData);
 public:
 	SkyrmionWord();
 	SkyrmionWord(int weightSize);
 	~SkyrmionWord() override;
 	void print() const override;
-	unsigned long long checkValueBWPorts(int whichInterval);
+	int determinePorts(Addr address, data_size_t size) const;
 	vector<int> bitPositions(int whichInterval);
 	sky_size_t getEntry(int position) const;
 	void setEntry(int position, sky_size_t value);
 	int getN_checkFull() const;
-	int determinePorts(Addr address, data_size_t size, int *portsBuffer) const;
 	void shift(int startPort, int endPort, int saveData); //saveData 1:save data to DMW
 	void insert(int accessPort, sky_size_t content, int saveData); //content is bit 0 or 1
 	void deleteSky(int accessPort, int saveData);
@@ -165,6 +169,7 @@ public:
 	void insert(int accessPort, int row, sky_size_t content, int saveData); //content is bit 0 or 1
 	void deleteSky(int accessPort, int row, int saveData);
 	sky_size_t detect(int accessPort, int row, int saveData);
+	void move(int startPort, int endPort, int moves, Addr address, data_size_t size, int saveData);
 	sky_size_t *read(int block, Addr address, data_size_t size, int saveData);
 	void write(int block, Addr address, data_size_t size, const sky_size_t *content, enum Write_Type type, int saveData);
 	void bitDCW(int port, Addr address, sky_size_t *content1, sky_size_t *ptr, bool &delKeep, bool &insrtKeep, int saveData);

@@ -147,6 +147,7 @@ public:
       // cout << "_previous_mem " << i << " " << _previous_mem[i] << endl;
       if (_previous_mem.at(i) >= DISTANCE-1){
           while (true){
+            cout << "test\n";
             //shift membrane potential to right, reset to zero
             _neuron.at(i)->shift(0, 2, 0);
 
@@ -166,12 +167,12 @@ public:
       }
       whichWeights.insert(_input_size+1); // for bias
 
-      // // check whichWeights
-      // cout << "whichWeights: ";
-      // for (auto& position:whichWeights){
-      //   cout << position << " ";
-      // }
-      // cout << endl;
+      // check whichWeights
+      cout << "whichWeights: ";
+      for (auto& position:whichWeights){
+        cout << position << " ";
+      }
+      cout << endl;
 
       // First, count the values that are close to zero
       unordered_set<int> zeros;
@@ -179,17 +180,17 @@ public:
       for (auto& position:whichWeights){
         if (_neuron.at(i)->detect(position+1, 0) == 1) {
           if (position > 0){
-            // cout << position << " " << _weights_tmp.at(i*(_input_size+1)+position-1);
+            cout << position << " " << _weights_tmp.at(i*(_input_size+1)+position-1);
           }
           zeros.insert(position);
         }
       }
-      // // check zeros
-      // cout << endl << "zeros: ";
-      // for (auto &zero:zeros){
-      //   cout << zero << " ";
-      // }
-      // cout << endl;
+      // check zeros
+      cout << endl << "zeros: ";
+      for (auto &zero:zeros){
+        cout << zero << " ";
+      }
+      cout << endl;
 
       // Second, determine whose value is negative
       // shift to left to see if they are negative
@@ -206,20 +207,20 @@ public:
       // shift backwards
       _neuron.at(i)->shift(0, _input_size + 4, 0);
 
-      // cout << "negative:" << endl;
-      // for (auto it = counters.begin(); it != counters.end(); it++){
-      //   cout << "first: " << it->first << " second: " << it->second << endl;
-      // }
-      //
-      // // check if setting is correct
-      // for (int j = 0; j < _input_size; j++){
-      //   vector<int> positions = _neuron.at(i)->bitPositions(j+1);
-      //   cout << " positions[" << j << "] = ";
-      //   for (unsigned int k = 0; k < positions.size(); k++){
-      //     cout << positions.at(k) << " ";
-      //   }
-      //   cout << endl;
-      // }
+      cout << "negative:" << endl;
+      for (auto it = counters.begin(); it != counters.end(); it++){
+        cout << "first: " << it->first << " second: " << it->second << endl;
+      }
+
+      // check if setting is correct
+      for (int j = 0; j < _input_size; j++){
+        vector<int> positions = _neuron.at(i)->bitPositions(j+1);
+        cout << " positions[" << j << "] = ";
+        for (unsigned int k = 0; k < positions.size(); k++){
+          cout << positions.at(k) << " ";
+        }
+        cout << endl;
+      }
 
       unsigned int num = 0;
       int count = 0;
@@ -232,13 +233,13 @@ public:
         for (auto& position:whichWeights){
           if (_neuron.at(i)->detect(position+1, 0) == 1){
             num++;
-            // cout << "num = " << num << endl;
+            cout << "num = " << num << endl;
             if (counters.count(position) > 0 && counters[position] == -1){
               counters[position] *= count;
-              // cout << "<0 count = " << count << " position = " << position << " val = " << counters[position]<< endl;
+              cout << "<0 count = " << count << " position = " << position << " val = " << counters[position]<< endl;
             } else {
               counters[position] = count;
-              // cout << "count = " << count << " position = " << position << " val = " << counters[position]<< endl;
+              cout << "count = " << count << " position = " << position << " val = " << counters[position]<< endl;
             }
           }
         }
