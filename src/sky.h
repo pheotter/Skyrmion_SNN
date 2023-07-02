@@ -8,6 +8,7 @@
 #include <cstring>
 #include <fstream>
 #include <vector>
+#include <algorithm>
 
 #define MAX_SIZE 2048
 #define OVER_HEAD 32
@@ -121,10 +122,7 @@ protected:
 private:
 	sky_size_t *read(Addr address, data_size_t size, int saveData);
 	void write(Addr address, data_size_t size, const sky_size_t *content, enum Write_Type type, int saveData);
-	void Naive_Traditional_delete(int shiftStartPort, int shiftEndPort, int delPort, int length, int saveData);
-	void Naive_Traditional_insert(int shiftStartPort, int shiftEndPort, int insertPort, int length, const sky_size_t *content, int saveData);
 	void Naive(int port, int length, int minRedundant, vector<sky_size_t> &content, int saveData);
-	void DCW_Traditional(int shiftStartPort, int shiftEndPort, int port, int length, const sky_size_t *content, int saveData);
 	void dcw(int port, int length, int frontRedundant, int backRedundant, vector<sky_size_t> &content, int saveData);
 	void pw(int shiftStartPort, int port, int length, int frontRedundant, int backRedundant, vector<sky_size_t> &content, int saveData);
 public:

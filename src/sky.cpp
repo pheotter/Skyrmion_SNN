@@ -866,11 +866,13 @@ sky_size_t *SkyrmionWord::read(Addr address, data_size_t size, int saveData)
 		cout << "read: address is invalid (0 ~ " << MAX_SIZE/8-1 << ")" << endl;
 		exit(1);
 	}
-	if (_intervalSize != 0 && address >= MAX_SIZE/8){
+	if (_intervalSize != 0 && address >= _intervalSize*4){
 		cout << "read: address is invalid (0 ~ " << MAX_SIZE/8-1 << ")" << endl;
 		exit(1);
 	}
-
+	int startPort = 0;
+	if (_intervalSize == 0) startPort = MAX_SIZE/DISTANCE + 2;
+	else startPort = _intervalSize + 2;
 	int numAddrBtwPort = DISTANCE / 8;
 	int port = address/numAddrBtwPort;
 	int frontRedundant = (address % numAddrBtwPort) * 8;
@@ -879,7 +881,7 @@ sky_size_t *SkyrmionWord::read(Addr address, data_size_t size, int saveData)
 	sky_size_t *tmpBuffer = new sky_size_t [bufferLen];
 
 	for (int i = 0; i < DISTANCE; i++){
-		shift(MAX_SIZE/DISTANCE+2, 0, saveData);
+		shift(startPort, 0, saveData);
 		for (int j = 0; j < bufferLen/DISTANCE; j++)
 			tmpBuffer[j * DISTANCE + i] = detect(port + j, saveData);
 	}
@@ -890,7 +892,7 @@ sky_size_t *SkyrmionWord::read(Addr address, data_size_t size, int saveData)
 
 	//move data backward
 	for (int i = 0; i < DISTANCE; i++){
-		shift(0, MAX_SIZE/DISTANCE+2, saveData);
+		shift(0, startPort, saveData);
 	}
 
 	// update shift_latency, delete_latency & restore shift energy
@@ -922,95 +924,41 @@ sky_size_t *SkyrmionWord::read(Addr address, data_size_t size, int saveData)
  * Read data with size bytes at address
  * @param address The address of the data which will be read
  * @param size Byte(s) of the data
- * @param parallel parallel 0 if read one byte data at a once, parallel 1 if read data parallel
+ * @param parallel parallel 0 if read one word data at a once, parallel 1 if read data parallel
  * @param saveData If 0 save energy data to the first statics, 1 to the second
- * @return Bytes of the data at address
+ * @return data read from the address
 */
 sky_size_t *SkyrmionWord::readData(Addr address, data_size_t size, int parallel, int saveData)
 {
-	if (size > ROW/8){
-		cout << "read: size is invalid (0 ~ " << ROW/8 << ")" << endl;
-		exit(1);
-	}
-
 	sky_size_t *data = new sky_size_t [size];
 	sky_size_t *readPtr;
 	sky_size_t *ptr;
 	sky_size_t *dataPtr = data;
 	int numAddrBtwPort = DISTANCE / 8;
 	if (parallel == 0){
-		int times = ceil(float(size)/numAddrBtwPort);
-		Addr newAddr = address;
-		if (address % numAddrBtwPort == 0){
-			for (int i = 0; i < times; i++){
-				if (i == times-1 && ((address + size) % numAddrBtwPort) != 0){
-					readPtr = read(newAddr, (address + size) % numAddrBtwPort, saveData);
-					ptr = bitToByte((address + size) % numAddrBtwPort, readPtr);
-					memcpy(dataPtr, ptr, ((address + size) % numAddrBtwPort) * sizeof(sky_size_t));
-					delete [] readPtr;
-					delete [] ptr;
-					readPtr = nullptr;
-					ptr = nullptr;
-				} else {
-					readPtr = read(newAddr, numAddrBtwPort, saveData);
-					ptr = bitToByte(numAddrBtwPort, readPtr);
-					memcpy(dataPtr, ptr, numAddrBtwPort * sizeof(sky_size_t));
-					newAddr += numAddrBtwPort;
-					dataPtr += numAddrBtwPort;
-					delete [] readPtr;
-					delete [] ptr;
-					readPtr = nullptr;
-					ptr = nullptr;
-				}
-			}
-			return data;
-		} else {
-			if ((size < numAddrBtwPort) && ((address % numAddrBtwPort) + size <= numAddrBtwPort)){
-				readPtr = read(address, size, saveData);
-				ptr = bitToByte(size, readPtr);
-				memcpy(dataPtr, ptr, size * sizeof(sky_size_t));
-				delete [] readPtr;
-				delete [] ptr;
-				readPtr = nullptr;
-				ptr = nullptr;
-				return data;
-			} else {
-				if (((size < numAddrBtwPort) && ((address % numAddrBtwPort) + size > numAddrBtwPort)) || (size % numAddrBtwPort == 0))
-					times++;
-				for (int i = 0; i < times; i++){
-					if (i == 0){
-						readPtr = read(newAddr, numAddrBtwPort - address % numAddrBtwPort, saveData);
-						ptr = bitToByte(numAddrBtwPort - address % numAddrBtwPort, readPtr);
-						memcpy(dataPtr, ptr, (numAddrBtwPort - address % numAddrBtwPort) * sizeof(sky_size_t));
-						newAddr += numAddrBtwPort - address % numAddrBtwPort;
-						dataPtr += numAddrBtwPort - address % numAddrBtwPort;
-						delete readPtr;
-						delete [] ptr;
-						readPtr = nullptr;
-						ptr = nullptr;
-					} else if (i == times-1 && ((address + size) % numAddrBtwPort) != 0) {
-						readPtr = read(newAddr, (address + size) % numAddrBtwPort, saveData);
-						ptr = bitToByte((address + size) % numAddrBtwPort, readPtr);
-						memcpy(dataPtr, ptr, ((address + size) % numAddrBtwPort) * sizeof(sky_size_t));
-						delete [] readPtr;
-						delete [] ptr;
-						readPtr = nullptr;
-						ptr = nullptr;
-					} else {
-						readPtr = read(newAddr, numAddrBtwPort, saveData);
-						ptr = bitToByte(numAddrBtwPort, readPtr);
-						memcpy(dataPtr, ptr, numAddrBtwPort * sizeof(sky_size_t));
-						newAddr += numAddrBtwPort;
-						dataPtr += numAddrBtwPort;
-						delete [] readPtr;
-						delete [] ptr;
-						readPtr = nullptr;
-						ptr = nullptr;
-					}
-				}
-				return data;
-			}
+		int minS = min(numAddrBtwPort - (int)address % numAddrBtwPort, (int)size);
+		readPtr = read(address, minS, saveData);
+		ptr = bitToByte(minS, readPtr);
+		memcpy(dataPtr, ptr, minS * sizeof(sky_size_t));
+		delete [] readPtr;
+		delete [] ptr;
+		readPtr = ptr = nullptr;
+		address += minS;
+		dataPtr += minS;
+		size -= minS;
+		while (size > 0){
+			int minSize = min(numAddrBtwPort, (int)size);
+			readPtr = read(address, minSize, saveData);
+			ptr = bitToByte(minSize, readPtr);
+			memcpy(dataPtr, ptr, minSize * sizeof(sky_size_t));
+			delete [] readPtr;
+			delete [] ptr;
+			readPtr = ptr = nullptr;
+			address += minSize;
+			dataPtr += minSize;
+			size -= minSize;
 		}
+		return data;
 	} else {
 		if (size <= numAddrBtwPort){
 			return readData(address, size, 0, saveData);
@@ -1072,40 +1020,6 @@ sky_size_t *SkyrmionBit::read(int block, Addr address, data_size_t size, int sav
 
 	delete [] buf;
 	return ptr;
-}
-
-void SkyrmionWord::Naive_Traditional_delete(int shiftStartPort, int shiftEndPort, int delPort, int length, int saveData)
-{
-	for (int i = 0; i < length; i++){
-		shift(shiftStartPort, shiftEndPort, saveData);
-		if (shiftEndPort < shiftStartPort) deleteSky(delPort, saveData);
-		else if (shiftEndPort > shiftStartPort) deleteSky(delPort+1, saveData);
-		if (saveData == 0){
-			shift_latency++;
-			delete_latency++;
-		} else if (saveData == 1){
-			shift_latency_DMW++;
-			delete_latency_DMW++;
-		}
-	}
-}
-
-void SkyrmionWord::Naive_Traditional_insert(int shiftStartPort, int shiftEndPort, int insertPort, int length, const sky_size_t *content, int saveData)
-{
-	for (int i = 0; i < length; i++){
-		if (shiftEndPort > shiftStartPort && *(content + length - 1 - i) == 1){
-			insert(insertPort, 1, saveData);
-			if (saveData == 0) insert_latency++;
-			else if (saveData == 1) insert_latency_DMW++;
-		} else if (shiftEndPort < shiftStartPort && *(content + i) == 1){
-			insert(insertPort+1, 1, saveData);
-			if (saveData == 0) insert_latency++;
-			else if (saveData == 1)	insert_latency_DMW++;
-		}
-		shift(shiftStartPort, shiftEndPort, saveData);
-		if (saveData == 0) shift_latency++;
-		else if (saveData == 1)	shift_latency_DMW++;
-	}
 }
 
 void SkyrmionWord::Naive(int port, int length, int minRedundant, vector<sky_size_t> &content, int saveData)
@@ -1272,61 +1186,6 @@ void SkyrmionWord::pw(int shiftStartPort, int port, int length, int frontRedunda
 	}
 }
 
-void SkyrmionWord::DCW_Traditional(int shiftStartPort, int shiftEndPort, int port, int length, const sky_size_t *content, int saveData)
-{
-	for (int i = 0; i < length; i++){
-		shift(shiftStartPort, shiftEndPort, saveData);
-		if (saveData == 0){
-			shift_latency++;
-			detect_latency++;
-		} else if (saveData == 1){
-			shift_latency_DMW++;
-			detect_latency_DMW++;
-		}
-		if (shiftStartPort > shiftEndPort){
-			if (detect(port, saveData) != *(content + i)){
-				// test whether data are identical. if not, delete and then insert
-				if (*(content + i) == 0){
-					deleteSky(port, saveData);
-					insert(port, 0, saveData);
-					if (saveData == 0){
-						delete_latency++;
-					} else if (saveData == 1){
-						delete_latency_DMW++;
-					}
-				}	else {
-					insert(port, 1, saveData);
-					if (saveData == 0){
-						insert_latency++;
-					} else if (saveData == 1){
-						insert_latency_DMW++;
-					}
-				}
-			}
-		} else {
-			if (detect(port + 1, saveData) != *(content + length - 1 - i)){
-				// test whether data are identical. if not, delete and then insert
-				if (*(content + length - 1 - i) == 0){
-					deleteSky(port + 1, saveData);
-					insert(port + 1, 0, saveData);
-					if (saveData == 0){
-						delete_latency++;
-					} else if (saveData == 1){
-						delete_latency_DMW++;
-					}
-				}	else {
-					insert(port + 1, 1, saveData);
-					if (saveData == 0){
-						insert_latency++;
-					} else if (saveData == 1){
-						insert_latency_DMW++;
-					}
-				}
-			}
-		}
-	}
-}
-
 /**
  * Write data with size byte(s) at address
  * @param address The address(offset) of the data which will be written
@@ -1415,60 +1274,23 @@ void SkyrmionWord::writeData(Addr address, data_size_t size, const sky_size_t *c
 	int numAddrBtwPort = DISTANCE / 8;
 	sky_size_t *ptr;
 	if (type == PERMUTATION_WRITE || type == NAIVE_TRADITIONAL || type == DCW_TRADITIONAL || size <= numAddrBtwPort){
-		if (type == NAIVE)
-			type = NAIVE_TRADITIONAL;
-		else if (type == DCW)
-			type = DCW_TRADITIONAL;
-		int times = ceil(float(size)/numAddrBtwPort);
-		Addr newAddr = address;
-		if (address % numAddrBtwPort == 0){
-			for (int i = 0; i < times; i++){
-				if (i == times-1 && ((address + size) % numAddrBtwPort) != 0){
-					ptr = byteToBit((address + size) % numAddrBtwPort, content);
-					write(newAddr, (address + size) % numAddrBtwPort, ptr, type, saveData);
-					delete [] ptr;
-					ptr = nullptr;
-				} else {
-					ptr = byteToBit(numAddrBtwPort, content);
-					write(newAddr, numAddrBtwPort, ptr, type, saveData);
-					newAddr += numAddrBtwPort;
-					content += numAddrBtwPort;
-					delete [] ptr;
-					ptr = nullptr;
-				}
-			}
-		} else {
-			if ((size < numAddrBtwPort) && ((address % numAddrBtwPort) + size <= numAddrBtwPort)){
-				ptr = byteToBit(size, content);
-				write(address, size, ptr, type, saveData);
-				delete [] ptr;
-				ptr = nullptr;
-			} else {
-				if (((size < numAddrBtwPort) && ((address % numAddrBtwPort) + size > numAddrBtwPort)) || (size % numAddrBtwPort == 0))
-					times++;
-				for (int i = 0; i < times; i++){
-					if (i == 0){
-						ptr = byteToBit(numAddrBtwPort - address % numAddrBtwPort, content);
-						write(newAddr, numAddrBtwPort - address % numAddrBtwPort, ptr, type, saveData);
-						content += numAddrBtwPort - address % numAddrBtwPort;
-						newAddr += numAddrBtwPort - address % numAddrBtwPort;
-						delete [] ptr;
-						ptr = nullptr;
-					} else if (i == times-1 && ((address + size) % numAddrBtwPort) != 0) {
-						ptr = byteToBit((address + size) % numAddrBtwPort, content);
-						write(newAddr, (address + size) % numAddrBtwPort, ptr, type, saveData);
-						delete [] ptr;
-						ptr = nullptr;
-					} else {
-						ptr = byteToBit(numAddrBtwPort, content);
-						write(newAddr, numAddrBtwPort, ptr, type, saveData);
-						content += numAddrBtwPort;
-						newAddr += numAddrBtwPort;
-						delete [] ptr;
-						ptr = nullptr;
-					}
-				}
-			}
+		int minS = min(numAddrBtwPort - (int)address % numAddrBtwPort, (int)size);
+		ptr = byteToBit(minS, content);
+		write(address, minS, ptr, type, saveData);
+		address += minS;
+		content += minS;
+		size -= minS;
+		delete [] ptr;
+		ptr = nullptr;
+		while (size > 0){
+			int minSize = min(numAddrBtwPort, (int)size);
+			ptr = byteToBit(minSize, content);
+			write(address, minSize, ptr, type, saveData);
+			address += minSize;
+			content += minSize;
+			size -= minSize;
+			delete [] ptr;
+			ptr = nullptr;
 		}
 	} else {
 		ptr = byteToBit(size, content);
@@ -2135,160 +1957,6 @@ void SkyrmionBit::write(int block, Addr address, data_size_t size, const sky_siz
 		}
 		case BIT_PW:
 		{
-			/*
-			int bufferSet = BUFFER_LENGTH / 8;
-			int newAddress = address / bufferSet;
-			int times = ceil(float(size)/bufferSet);
-			if ((size < bufferSet && (address % bufferSet + size > bufferSet)) || (address % bufferSet != 0 && size % bufferSet == 0)){
-				times++;
-			}
-			//cout << "times = " << times << endl;
-			for (int i = 0; i < moves; i++){
-				shift(ports[0], ports[1], newAddress * bufferSet, times * bufferSet, saveData);
-				if (saveData == 0){
-					shift_latency++;
-				} else if (saveData == 1){
-					shift_latency_DMW++;
-				}
-			}
-			int shiftNumAssemble = 0;
-			int shiftNumRepermute = 0;
-			int maxShiftLatencyAssemble = 0;
-			int maxShiftLatencyRepermute = 0;
-
-			for (int i = 0; i < times; i++){
-				sky_size_t *ptrNew = new sky_size_t[bufferSet * 8];
-				if (i == 0 && address % bufferSet != 0) {
-					shiftNumAssemble = 0;
-					shiftNumRepermute = 0;
-					// 1. assemble the existing skyrmions
-					memcpy(ptrNew + (address % bufferSet) * 8, ptr, sizeof(sky_size_t) * (bufferSet - address % bufferSet) * 8);
-
-					for (int j = 0; j < BUFFER_LENGTH ; j++){
-						if (j < (address % bufferSet) * 8){
-							int input = detect(port, (newAddress + i) * BUFFER_LENGTH + j, saveData);
-							ptrNew[j] = input;
-							if (input == 1){
-								buffer[(newAddress + i) * MAX_SIZE + block]++;
-								shiftNumAssemble = j + 1;
-							}
-						} else {
-							if (detect(port, (newAddress + i) * BUFFER_LENGTH + j, saveData) == 1){
-								buffer[(newAddress + i) * MAX_SIZE + block]++;
-								shiftNumAssemble = j + 1;
-							}
-						}
-					}
-					ptr += (bufferSet - address % bufferSet) * 8;
-				} else if (i == times-1 && (address + size) % bufferSet != 0) {
-					shiftNumAssemble = 0;
-					shiftNumRepermute = 0;
-					// 1. assemble the existing skyrmions
-					memcpy(ptrNew, ptr, sizeof(sky_size_t) * ((address + size) % bufferSet) * 8);
-
-					for (int j = 0; j < BUFFER_LENGTH ; j++){
-						if (j >= ((address + size) % bufferSet) * 8){
-							int input = detect(port, (newAddress + i) * BUFFER_LENGTH + j, saveData);
-							ptrNew[j] = input;
-							if (input == 1){
-								buffer[(newAddress + i) * MAX_SIZE + block]++;
-								shiftNumAssemble = j + 1;
-							}
-						} else {
-							if (detect(port, (newAddress + i) * BUFFER_LENGTH + j, saveData) == 1){
-								buffer[(newAddress + i) * MAX_SIZE + block]++;
-								shiftNumAssemble = j + 1;
-							}
-						}
-					}
-				} else {
-					shiftNumAssemble = 0;
-					shiftNumRepermute = 0;
-					// 1. assemble the existing skyrmions
-					memcpy(ptrNew, ptr, sizeof(sky_size_t) * BUFFER_LENGTH);
-
-					for (int j = 0; j < BUFFER_LENGTH ; j++){
-						if (detect(port, (newAddress + i) * BUFFER_LENGTH + j, saveData) == 1){
-							buffer[(newAddress + i) * MAX_SIZE + block]++;
-							shiftNumAssemble = j + 1;
-						}
-					}
-					ptr += BUFFER_LENGTH;
-				}
-				for (int j = 0; j < shiftNumAssemble; j++){
-					shiftVertcl(port, (newAddress + i) * bufferSet, 1, saveData);
-				}
-				if (shiftNumAssemble > maxShiftLatencyAssemble){
-					maxShiftLatencyAssemble = shiftNumAssemble;
-				}
-
-				// 2. re-permute the exising skyrmions & inject new skyrmions (if needed)
-				// when we exhaust all skyrmions in the buffer, then we don't need
-				// to shift, since we can insert at each access port
-				shiftNumRepermute = countNumShift(ptrNew, buffer[(newAddress + i) * MAX_SIZE + block]);
-				//cout << "Repermute. i = " << i << " shiftNumRepermute = " << shiftNumRepermute << endl;
-				//cout << "after shiftNumRepermute, buffer[" << (newAddress + i) * MAX_SIZE + block << "] = " << buffer[(newAddress + i) * MAX_SIZE + block] << endl;
-				for (int j = 0; j < shiftNumRepermute; j++){
-					if (j == 0){
-						// imagine there is a buffer track where we stored skyrmions,
-						// and we first shift one skyrmion to the race track
-						if (saveData == 0){
-							shiftVertcl_energy++;
-						} else if (saveData == 1){
-							shiftVertcl_energy_DMW++;
-						}
-						insert(port, (newAddress + i) * BUFFER_LENGTH, 2, saveData);
-					} else {
-						shiftVertcl(port, (newAddress + i) * bufferSet, 0, saveData);
-						if (ptrNew[shiftNumRepermute - j - 1] == 0){
-							insert(port, (newAddress + i) * BUFFER_LENGTH, 0, saveData);
-						} else if (ptrNew[shiftNumRepermute - j - 1] == 1){
-							insert(port, (newAddress + i) * BUFFER_LENGTH, 2, saveData);
-						}
-					}
-				}
-				if (shiftNumRepermute > maxShiftLatencyRepermute){
-					maxShiftLatencyRepermute = shiftNumRepermute;
-				}
-
-				if (buffer[(newAddress + i) * MAX_SIZE + block] == 0){
-					for (int j = shiftNumRepermute; j < BUFFER_LENGTH; j++){
-						if (ptrNew[j] == 0){
-							insert(port, (newAddress + i) * BUFFER_LENGTH + j, 0, saveData);
-						} else if (ptrNew[j] == 1){
-							insert(port, (newAddress + i) * BUFFER_LENGTH + j, 1, saveData);
-							insrtKeep = true;
-						}
-					}
-				}
-				//print();
-				delete [] ptrNew;
-			}
-			if (saveData == 0){
-				shiftVertcl_latency += maxShiftLatencyRepermute;
-				shiftVertcl_latency += maxShiftLatencyAssemble;
-				detect_latency++;
-				if (insrtKeep == 1)
-					insert_latency++;
-			} else if (saveData == 1){
-				shiftVertcl_latency_DMW += maxShiftLatencyRepermute;
-				shiftVertcl_latency_DMW += maxShiftLatencyAssemble;
-				detect_latency_DMW++;
-				if (insrtKeep == 1)
-					insert_latency_DMW++;
-			}
-
-			// move backward
-			for (int i = 0; i < moves; i++){
-				shift(ports[1], ports[0], newAddress * bufferSet, times * bufferSet, saveData);
-				if (saveData == 0){
-					shift_latency++;
-				} else if (saveData == 1){
-					shift_latency_DMW++;
-				}
-			}
-			break;
-			*/
 			int assembleShiftNum = 0;
 			int repermuteShiftNum = 0;
 			int maxAssembleShiftLatency = 0;
@@ -2467,14 +2135,7 @@ void SkyrmionBit::write(int block, Addr address, data_size_t size, const sky_siz
 		}
 	}
 	// move backward
-	for (int i = 0; i < moves; i++){
-		shift(ports[1], ports[0], address, size, saveData);
-		if (saveData == 0){
-			shift_latency++;
-		} else if (saveData == 1){
-			shift_latency_DMW++;
-		}
-	}
+	move(ports[1], ports[0], moves, address, size, saveData);
 }
 
 /**

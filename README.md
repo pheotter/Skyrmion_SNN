@@ -45,7 +45,7 @@ Please see the picture below:
 ![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky1.png)
 #### How to store values of weights and bias
 - The sign bit is at the position 31. If the value is positive, then the position 31 will be empty. However, if the value is negative, the position 31 will exist a skyrmion.
-- If the absolute value of a weight or bias is less than 1.0 and greater or equal to (31/31+30/31)*0.5, the position 30 will contain a skyrmion.
-- If the absolute value of a weight or bias is less than (31/31+30/31)*0.5 and greater or equal to (30/31+29/31)*0.5, the position 29 will contain a skyrmion, and so on.
+- If the absolute value of a weight or bias is less than 1.0 and greater than or equal to (31/31+30/31)*0.5, the position 30 will contain a skyrmion.
+- If the absolute value of a weight or bias is less than (31/31+30/31)*0.5 and greater than or equal to (30/31+29/31)*0.5, the position 29 will contain a skyrmion, and so on.
 - If the value of a weight or bias is equal to 0, there will be no skyrmions from position 0 to position 31. It will insert a skyrmion on the right-hand-sided access port of the distance.
 ![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky2.png)
