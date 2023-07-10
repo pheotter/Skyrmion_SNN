@@ -26,9 +26,9 @@ mnist_test = datasets.MNIST(root="data", train=False, download=True, transform=t
 
 
 # Network Architecture
-num_inputs = 36# 28*28
-num_hidden = 5# 1000
-num_outputs = 3# 10
+num_inputs = 28*28 #36
+num_hidden = 1000 #5
+num_outputs = 10 #3
 
 # Temporal Dynamics
 num_steps = 25
@@ -51,7 +51,7 @@ class SNN(nn.Module):
         super().__init__()
 
         # Initialize layers
-        self.x = torch.nn.Parameter(torch.tensor(2.4, dtype=torch.float32))
+        # self.x = torch.nn.Parameter(torch.tensor(2.4, dtype=torch.float32))
         w1 = torch.rand(num_hidden, num_inputs)
         b1 = torch.rand(num_hidden)
         w2 = torch.rand(num_outputs, num_hidden)
@@ -68,12 +68,10 @@ class SNN(nn.Module):
         col = data.size(2) # print(f"col: {col}")->784
 
         for step in range(num_steps):
-            print(f"step {step}")
             spk2_tmp = torch.Tensor()
             mem2_tmp = torch.Tensor()
             data_tmp = data[step]
             for index in range(row):
-                print(f"index {index}")
                 spk1, mem1 = self.lif1(data_tmp[index])
                 spk2, mem2 = self.lif2(spk1)
                 spk2_tmp = torch.cat((spk2_tmp, spk2))

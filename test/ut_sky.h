@@ -419,7 +419,7 @@ TEST(checkDeterminePortsBit, case1)
   }
 }
 
-TEST(checkBitPositions, case1)
+TEST(checkBitPositionsAndClear, case1)
 {
   if (DISTANCE == 32){
     SkyrmionWord test(786);
@@ -430,6 +430,9 @@ TEST(checkBitPositions, case1)
     ASSERT_EQ(8, res.size());
     vector<int> output = {17,18,23,24,25,27,29,31};
     ASSERT_EQ(output, res);
+
+    test.clear(249, 0);
+    ASSERT_TRUE(test.bitPositions(249).empty());
   }
 }
 

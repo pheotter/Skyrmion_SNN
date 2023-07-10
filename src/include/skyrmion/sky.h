@@ -109,8 +109,8 @@ public:
 	void setWriteType(enum Write_Type write_type);
 	int getWriteType() const;
 	virtual void print() const = 0;
-	static sky_size_t *bitToByte(data_size_t size, const sky_size_t *read);
-	static sky_size_t *byteToBit(data_size_t size, const sky_size_t *read);
+	static sky_size_t *bitToByte(data_size_t size, sky_size_t *read);
+	static sky_size_t *byteToBit(data_size_t size, const sky_size_t *content);
 	void outPut(void);
 };
 
@@ -131,7 +131,7 @@ public:
 	~SkyrmionWord() override;
 	void print() const override;
 	int determinePorts(Addr address, data_size_t size) const;
-	vector<int> bitPositions(int whichInterval) const;
+	vector<int> bitPositions(int whichInterval);
 	sky_size_t getEntry(int position) const;
 	void setEntry(int position, sky_size_t value);
 	int getN_checkFull() const;
@@ -141,8 +141,7 @@ public:
 	sky_size_t detect(int accessPort, int saveData);
 	sky_size_t *readData(Addr address, data_size_t size, int parallel, int saveData); // type 1: parallel
 	void writeData(Addr address, data_size_t size, const sky_size_t *content, enum Write_Type type, int saveData);
-	bool isFull() const;
-	void clear(int whichInterval, int saveData);
+	bool isFull();
 };
 
 class SkyrmionBit: public Skyrmion {

@@ -31,6 +31,16 @@ python3 setup.py install
 ```bash
 python3 function.py
 ```
+### Google test functions in leaky.cpp and IEEE754.cpp
+First, comment out the pybind11 codes at the bottom of these two files.
+Then, executing these commands from the src directory:
+```bash
+mkdir build
+cd build
+cmake ..
+cmake --build .
+```
+
 ## Describe the idea
 I'll use two methods to implement the idea and take the dataset MNIST for example.
 ### Method I

@@ -7,24 +7,28 @@
 
 using namespace std;
 
-class IEEE754 { // torch::nn::Module
+class IEEE754 {
 protected:
   vector<SkyrmionWord*> _neuron;
-  // int _batch_size; for inference, there is no need a batch size
   int _input_size;
   int _output_size;
-  vector<int> _previous_mem;
+  float _beta;
+  vector<float> _previous_mem;
   vector<float> _weights_tmp; // delete
   torch::Tensor _spike;
-  unordered_map<string, pair<int, int>> stride;
+  pair<int,int> _weight_stride;
+  pair<int,int> _bias_stride;
+  pair<int,int> _mem_stride;
   // the first int to store which racetrack
   // the second int to store where to start
-  unordered_map<string, pair<int, int>> start;
+  pair<int,int> _weight_start;
+  pair<int,int> _bias_start;
+  pair<int,int> _mem_start;
 public:
-  IEEE754(int input_size, int output_size){
-    // _batch_size = batch_size;
+  IEEE754(int input_size, int output_size, float beta){
     _input_size = input_size;
     _output_size = output_size;
+    _beta = beta;
     for (int i = 0; i < output_size; i++){
       // one is for membrane potential, the other one is for bias
       _neuron.emplace_back(new SkyrmionWord(input_size + 2));
@@ -32,16 +36,14 @@ public:
     _previous_mem.resize(output_size);
     _weights_tmp.resize((input_size+1)*output_size);
     _spike = torch::zeros(output_size);
-    stride["weight"] = make_pair(input_size, 1);
-    stride["bias"] = make_pair(0, 1);
-    stride["mem"] = make_pair(0, 1);
-    start["weight"] = make_pair(0, 0);
+    _weight_stride = make_pair(input_size, 1);
+    _bias_stride = make_pair(0, 1);
+    _mem_stride = make_pair(0, 1);
+    _weight_start = make_pair(0, 0);
     int num_weights = output_size * input_size;
     int num_weights_bias = num_weights + output_size;
-    start["bias"] = make_pair(num_weights/(input_size + 2), num_weights % (input_size + 2));
-    cout << "bias which skyrmion: " << num_weights/(input_size + 2) << " bias start: " << num_weights % (input_size + 2) << endl;
-    start["mem"] = make_pair(num_weights_bias/(input_size + 2), num_weights_bias % (input_size + 2));
-    cout << "mem which skyrmion: " << num_weights_bias/(input_size + 2) << " mem start: " << num_weights_bias % (input_size + 2) << endl;
+    _bias_start = make_pair(num_weights/(input_size + 2), num_weights % (input_size + 2));
+    _mem_start = make_pair(num_weights_bias/(input_size + 2), num_weights_bias % (input_size + 2));
   }
 
   ~IEEE754(){
@@ -52,11 +54,28 @@ public:
 
   int getInputSize() const {return _input_size;}
   int getOutputSize() const {return _output_size;}
+  float getDecayRate() const {return _beta;}
+  int getPreviousMemSize() const {return _previous_mem.size();}
+  pair<int,int> getWeightStride() const {return _weight_stride;}
+  pair<int,int> getBiasStride() const {return _bias_stride;}
+  pair<int,int> getMemStride() const {return _mem_stride;}
+  pair<int,int> getWeightStart() const {return _weight_start;}
+  pair<int,int> getBiasStart() const {return _bias_start;}
+  pair<int,int> getMemStart() const {return _mem_start;}
+  void setPreviousMem(int outputIndex, float f) {_previous_mem.at(outputIndex) = f;}
+  vector<int> neuronBitPosition(int whichNeuron, int whichInterval) const {
+    return _neuron.at(whichNeuron)->bitPositions(whichInterval);
+  }
 
-  vector<int> getPlace(pair<int,int> &start, int index){
+  vector<int> getPlace(pair<int,int> &start, pair<int,int> &stride, int row, int col){
+    if (row > _output_size -1 || row < 0 || col < 0 || col > _input_size -1){
+      cout << "getPlace: row or column is out of range (row: 0~"
+        << _output_size-1 << ", col: 0~" << _input_size-1 << ")" << endl;
+      exit(1);
+    }
     vector<int> result(2, 0);
-    result[0] = start.first + (start.second + index) / (_input_size + 2);
-    result[1] = (start.second + index) % (_input_size + 2);
+    result[0] = start.first + (start.second + (stride.first*row + stride.second*col)) / (_input_size + 2);
+    result[1] = (start.second + stride.first*row + stride.second*col) % (_input_size + 2);
     return result;
   }
 
@@ -65,86 +84,150 @@ public:
     int u;
   };
 
-  static bitset<sizeof(float) * 8> FPTransform_single(float f){
+  static sky_size_t *floatToBit_single(float f){
     ufloat uf;
     uf.f = f;
     bitset<sizeof(float) * 8> bits(uf.u);
-    return bits;
+    sky_size_t *res = new sky_size_t [sizeof(float) * 8];
+    for (int i = 0; i < sizeof(float) * 8; i++){
+      res[i] = bits[sizeof(float) * 8 - i - 1];
+    }
+    return res;
   }
+
+  static float bitToFloat_single(sky_size_t *v){
+    float res = 1;
+    if (v[0] == 1) res = -1;
+    sky_size_t *exp = Skyrmion::bitToByte(1, v+1);
+    float fraction = 1;
+    for (int i = 9; i < 32; i++){
+      if (v[i] == 1){
+        fraction += pow(2, 8-i);
+      }
+    }
+    return res * pow(2, *exp - 127) * fraction;
+  }
+
+  void reset_mechanism(int outputIndex){ // so far we only reset to zero
+    vector<int> mem_place = getPlace(_mem_start, _mem_stride, 0, outputIndex);
+    if (_previous_mem.at(outputIndex) >= 1){
+      // delete all skyrmions in the interval
+      sky_size_t content[DISTANCE] = {0};
+      _neuron.at(mem_place.at(0))->writeData(mem_place.at(1), DISTANCE/8, content, NAIVE, 0);
+    } else {
+      sky_size_t *content = floatToBit_single(_previous_mem.at(outputIndex));
+      // need to change bit to bype first (for gem5's format)
+      sky_size_t *contentByte = Skyrmion::bitToByte(DISTANCE/8, content);
+      _neuron.at(mem_place.at(0))->writeData(mem_place.at(1)*DISTANCE/8, DISTANCE/8, contentByte, PERMUTATION_WRITE, 0);
+    }
+  }
+
+  unordered_set<int> inputIsOne(torch::Tensor &input){
+    unordered_set<int> whichWeights;
+    whichWeights.insert(0); // for membrane potential
+    for (int j = 0; j < _input_size; j++){
+      if (input[j].item<int>() == 1)
+        whichWeights.insert(j+1);
+    }
+    whichWeights.insert(_input_size+1); // for bias
+    return whichWeights;
+  }
+
+  unordered_map<int, vector<int>> placeToBeRead(unordered_set<int> &whichWeights, int outputIndex){
+    unordered_map<int,vector<int>> readWhich;
+    for (auto which:whichWeights){
+      if (which == 0){
+        vector<int> place = getPlace(_mem_start, _mem_stride, 0, outputIndex);
+        readWhich[place.at(0)].push_back(place.at(1));
+      } else if (which == _input_size+1){
+        vector<int> place = getPlace(_bias_start, _bias_stride, 0, outputIndex);
+        readWhich[place.at(0)].push_back(place.at(1));
+      } else {
+        vector<int> place = getPlace(_weight_start, _weight_stride, outputIndex, which - 1);
+        readWhich[place.at(0)].push_back(place.at(1));
+      }
+    }
+    return readWhich;
+  }
+
+  void setData(int whichRaceTrack, int whichInterval, const sky_size_t *content){
+    if (whichRaceTrack < 0 || whichRaceTrack >= _output_size){
+      cout << "setData: whichRaceTrack out of range\n";
+      exit(1);
+    }
+    sky_size_t *contentByte = Skyrmion::bitToByte(DISTANCE/8, content);
+    _neuron.at(whichRaceTrack)->writeData(whichInterval*DISTANCE/8, DISTANCE/8, contentByte, NAIVE, 0);
+  }
+
+  float calculateMem(unordered_map<int, vector<int>> &readWhich){
+    float new_mem = 0;
+    for (auto it = readWhich.begin(); it != readWhich.end(); it++){
+      sky_size_t *dataByte = _neuron.at(it->first)->readData(0, (_input_size+2)*DISTANCE/8, 1, 0);
+      sky_size_t *dataBit = Skyrmion::byteToBit((_input_size+2)*DISTANCE/8, dataByte);
+      for (int j = 0; j < it->second.size(); j++){
+        sky_size_t *ptr = dataBit + readWhich[it->first].at(j) * DISTANCE;
+        new_mem += bitToFloat_single(ptr);
+      }
+      delete [] dataByte;
+      delete [] dataBit;
+    }
+    return new_mem;
+  }
+
   // weights.size() = [1000, 784]
   // bias.size() = [1000]
   void initialize_weights(torch::Tensor weights, torch::Tensor bias){
     for (int i = 0; i < _output_size; i++){
-      bitset<sizeof(float) * 8> bias_transf = FPTransform_single(bias[i].item<double>());
-      cout << "bias[" << i << "] = " << bias[i].item<double>() << endl;
-      cout << "justify bias_transf: " << bias_transf.to_string() << endl;
-      vector<int> bias_place = getPlace(start["bias"], i);
-      for (int j = 0; j < _input_size; j++){
-        bitset<sizeof(float) * 8> weights_transf = FPTransform_single(weights[i][j].item<double>());
-        cout << "weight[" << i << "][" << j << "] = " << weights[i][j].item<double>() << endl;
-        cout << "justify weights_transf: " << weights_transf.to_string() << endl;
-        vector<int> weight_place = getPlace(start["weight"], i * _input_size + j);
-        cout << "weight_place[0] = " << weight_place[0] << " weight_place[1] = " << weight_place[1] << endl;
-        for (int k = 0; k < DISTANCE; k++){
-          if (weights_transf[DISTANCE-k-1] == 1)
-            _neuron.at(weight_place[0])->insert(weight_place[1] + 1, 1, 0);
-          _neuron.at(weight_place[0])->shift(weight_place[1] + 2, weight_place[1] + 1, 0);
-          if (bias_transf[DISTANCE-k-1] == 1)
-            _neuron.at(bias_place[0])->insert(bias_place[1] + 1, 1, 0);
-          _neuron.at(bias_place[0])->shift(bias_place[1] + 2, bias_place[1] + 1, 0);
+      sky_size_t *buffer = new sky_size_t [(_input_size + 2) * DISTANCE];
+      sky_size_t *bufferPtr = buffer;
+      for (int j = 0; j < _input_size +2; j++){
+        sky_size_t *ptr = nullptr;
+        pair<int,int> index = make_pair(i, j);
+        if (index >= _mem_start){
+          ptr = floatToBit_single(0.0);
+        } else if (index < _mem_start && index >= _bias_start){
+          int bIndex = (i - _bias_start.first) * (_input_size + 2) + j - _bias_start.second;
+          ptr = floatToBit_single(bias[bIndex].item<double>());
+        } else if (index < _bias_start){
+          int wI = (i * (_input_size + 2) + j) / _input_size;
+          int wJ = (i * (_input_size + 2) + j) % _input_size;
+          ptr = floatToBit_single(weights[wI][wJ].item<double>());
         }
-        vector<int> positions = _neuron.at(weight_place[0])->bitPositions(weight_place[1]);
-        cout << " positions[" << j << "] = ";
-        for (unsigned int m = 0; m < positions.size(); m++){
-          cout << positions.at(m) << " ";
-        }
-        cout << endl;
+        memcpy(bufferPtr, ptr, DISTANCE * sizeof(sky_size_t));
+        bufferPtr += DISTANCE;
+        delete [] ptr;
+        ptr = nullptr;
       }
+      sky_size_t *bufferByte = Skyrmion::bitToByte((_input_size + 2)*DISTANCE/8, buffer);
+      _neuron.at(i)->writeData(0, (_input_size+2)*DISTANCE/8, bufferByte, NAIVE, 0);
+      delete [] bufferByte;
+      delete [] buffer;
     }
   }
 
   // input.size() = [784]
   vector<torch::Tensor> forward(torch::Tensor input){
+    // record which input is 1
+    unordered_set<int> whichWeights = inputIsOne(input);
+
     for (int i = 0; i < _output_size; i++){
-      // reset mechanism
-      if (_previous_mem.at(i) >= 1){
-        
-      }
+      // reset to zero or set to the new membrane potential
+      reset_mechanism(i);
+
+      // record which neuron and which interval to read
+      unordered_map<int,vector<int>> readWhich = placeToBeRead(whichWeights, i);
+
+      // calculate neuron's value to be added
+      float new_mem = calculateMem(readWhich);
+      _previous_mem[i] = new_mem;
     }
+    torch::Tensor mem = torch::from_blob(_previous_mem.data(), {_output_size}, torch::kFloat32);
+
+    return {_spike, mem};
   }
 
 };
 
-int main(){
-  torch::manual_seed(7);
-
-  int in = 12;
-  int out = 3;
-  IEEE754 neuron = IEEE754(in, out);
-  double x = 8.5;
-  bitset<sizeof(float) * 8> res = neuron.FPTransform_single(x);
-  cout << "x: " << res.to_string() << endl;
-
-  cout << "neuron's input size = " << neuron.getInputSize() << endl;
-  cout << "neuron's output size = " << neuron.getOutputSize() << endl;
-  torch::Tensor w = torch::rand({out, in});
-  torch::Tensor b = torch::rand({out});
-  w[0][1] *= -1;
-  w[2][8] *= -1;
-  w[1][4] *= -1;
-  b[0] *= -1;
-
-  neuron.initialize_weights(w, b);
-
-  // torch::Tensor input = torch::randint(0, 2, {in});
-  //
-  // vector<torch::Tensor> result = neuron.forward(input);
-  // torch::Tensor spk = result[0];
-  // torch::Tensor mem = result[1];
-  // cout << "spk = " << spk << endl;
-  // cout << "mem = " << mem << endl;
-  return 0;
-}
 
 // namespace py = pybind11;
 //

@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "ut_sky_cppFile_v2.h"
+#include "ut_sky.h"
 
 int main(int argc , char **argv){
   testing::InitGoogleTest(&argc, argv);

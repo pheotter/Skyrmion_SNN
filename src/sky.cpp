@@ -97,7 +97,7 @@ sky_size_t SkyrmionWord::getEntry(int position) const
  *  for example, if DISTANCE is 16(0000 0101 0001 0011)
  *  the return vector will be {0,1,4,8,10}
 */
-vector<int> SkyrmionWord::bitPositions(int whichInterval)
+vector<int> SkyrmionWord::bitPositions(int whichInterval) const
 {
 	if (_intervalSize == 0 && whichInterval > MAX_SIZE / DISTANCE){
 		cout << "bitPositions: whichInterval is invalid!" << endl;
@@ -294,18 +294,17 @@ Stat Skyrmion::getShtVrtcl_latcy_DMW() const
 	return shiftVertcl_latency_DMW;
 }
 
-sky_size_t *Skyrmion::bitToByte(data_size_t size, sky_size_t *read)
+sky_size_t *Skyrmion::bitToByte(data_size_t size, const sky_size_t *read)
 {
-	sky_size_t *ptr = read;
 	sky_size_t *byte = new sky_size_t [size];
 	for (int i = 0; i < size; i++){
 		sky_size_t result = 0;
 		for (int j = 0; j < 8; j++){
-			sky_size_t oneBit = *(ptr + 7 - j);
+			sky_size_t oneBit = *(read + 7 - j);
 			result = result | (oneBit << j);
 		}
 		byte[i] = result;
-		ptr += 8;
+		read += 8;
 	}
 	return byte;
 }
@@ -1303,9 +1302,40 @@ void SkyrmionWord::writeData(Addr address, data_size_t size, const sky_size_t *c
 /**
  * Determine whether the race track is full or not
 */
-bool SkyrmionWord::isFull()
+bool SkyrmionWord::isFull() const
 {
 	return n_checkFull == MAX_SIZE / 8;
+}
+
+void SkyrmionWord::clear(int whichInterval, int saveData)
+{
+	if (_intervalSize == 0 && whichInterval > MAX_SIZE / DISTANCE){
+		cout << "clear: whichInterval is invalid!" << endl;
+		exit(1);
+	}
+	if (_intervalSize != 0 && whichInterval > _intervalSize){
+		cout << "clear: whichInterval is invalid!" << endl;
+		exit(1);
+	}
+	int startPort = 0;
+	if (_intervalSize == 0) startPort = MAX_SIZE/DISTANCE + 2;
+	else startPort = _intervalSize + 2;
+	for (int i = 0; i < DISTANCE; i++){
+		shift(startPort, 0, saveData);
+		deleteSky(whichInterval, saveData);
+	}
+	// move backward
+	for (int i = 0; i < DISTANCE; i++)
+		shift(0, startPort, saveData);
+
+	// update shift latency & delete Latency
+	if (saveData == 0){
+		shift_latency += DISTANCE * 2;
+		delete_latency += DISTANCE;
+	} else if (saveData == 1){
+		shift_latency_DMW += DISTANCE * 2;
+		delete_latency_DMW += DISTANCE;
+	}
 }
 
 /**
@@ -1897,18 +1927,11 @@ void SkyrmionBit::write(int block, Addr address, data_size_t size, const sky_siz
 	int port = block / DISTANCE;
 	bool delKeep = false;
 	bool insrtKeep = false;
-	if (ports[0] < ports[1]){
-		port++;
-	}
+	if (ports[0] < ports[1]) port++;
+
 	//move to the access port
-	for (int i = 0; i < moves; i++){
-		shift(ports[0], ports[1], address, size, saveData);
-		if (saveData == 0){
-			shift_latency++;
-		} else if (saveData == 1){
-			shift_latency_DMW++;
-		}
-	}
+	move(ports[0], ports[1], moves, address, size, saveData);
+
 	switch(type){
 		case BIT:
 			for (int k = 0; k < size * 8; k++){
