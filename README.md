@@ -39,6 +39,7 @@ mkdir build
 cd build
 cmake ..
 cmake --build .
+./leaky_test
 ```
 
 ## Describe the idea
@@ -59,3 +60,23 @@ Please see the picture below:
 - If the absolute value of a weight or bias is less than (31/31+30/31)*0.5 and greater than or equal to (30/31+29/31)*0.5, the position 29 will contain a skyrmion, and so on.
 - If the value of a weight or bias is equal to 0, there will be no skyrmions from position 0 to position 31. It will insert a skyrmion on the right-hand-sided access port of the distance.
 ![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky2.png)
+
+#### The process of forward
+1. To calculate the new membrane potential, we just add bias and the weights whose outputs of previous layer's neurons are one to its value. Thus, we can collet the intervals of the membrane potential, weights whose input is 1 and bias into the set s.
+2. Since the weights that are close to zero will not affect the membrane potential, we detect right access ports of intervals in set s to explore whether they are 0. If so, we collect them into a set zero.
+3. Since the sign bit resides at the position 31, the more efficient way is shift all the skyrmions left to access ports to detect left access ports of intervals in set s. If the value is negative and not in set zero, we collect them into an unordered map N, and their values are all -1.
+4. After that we shift right to move all skyrmions to their original places.
+5. We set num equal to 0, and count equal to 0
+6. We shift all skyrmions to right and then detect whether right access ports of intervals in set s exist a skyrmion.
+7. We add one to count
+8. If we detect a skyrmion, and then add one to num. If the interval is in the map N and whose value is -1, and then we multiply -1 and count to store its value back to the map N. If the intervla is not in the map N, and then we store (interval, count) value into the map N.
+9. Repeat step 6~8 until num equals to size of set s minus size of set z.
+10. We add all the values in the map N and deduct one to represent the decay rate.
+![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky3.png)
+![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky4.png)
+![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky5.png)
+![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky6.png)
+![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky7.png)
+![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky8.png)
+![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky9.png)
+![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky10.png)
