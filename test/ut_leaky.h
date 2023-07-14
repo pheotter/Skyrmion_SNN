@@ -19,6 +19,8 @@ TEST(testInitializeWeights, case1)
   torch::Tensor weight = torch::from_blob(w.data(), {2, 4}, torch::kFloat32);
   torch::Tensor bias = torch::from_blob(b.data(), {2}, torch::kFloat32);
   leaky.initialize_weights(weight, bias);
+  leaky.calculateLatency();
+  leaky.updateLatency();
 
   ASSERT_TRUE(leaky.neuronBitPosition(0, 0).empty());
   ASSERT_TRUE(leaky.neuronBitPosition(0, 1).empty());
@@ -41,6 +43,26 @@ TEST(testInitializeWeights, case1)
   ASSERT_EQ(res, leaky.neuronBitPosition(1, 4));
   res = {21};
   ASSERT_EQ(res, leaky.neuronBitPosition(1, 5));
+  ASSERT_EQ(DISTANCE, leaky.getNeuron(0)->getSht_engy());
+  ASSERT_EQ(7, leaky.getNeuron(0)->getIns_engy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getDel_engy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getDet_engy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getShtVrtcl_engy());
+  ASSERT_EQ(DISTANCE, leaky.getNeuron(0)->getSht_latcy());
+  ASSERT_EQ(3, leaky.getNeuron(0)->getIns_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getDel_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getDet_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getShtVrtcl_latcy());
+  ASSERT_EQ(DISTANCE, leaky.getNeuron(1)->getSht_engy());
+  ASSERT_EQ(7, leaky.getNeuron(1)->getIns_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDel_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDet_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getShtVrtcl_engy());
+  ASSERT_EQ(DISTANCE, leaky.getNeuron(1)->getSht_latcy());
+  ASSERT_EQ(3, leaky.getNeuron(1)->getIns_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDel_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDet_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getShtVrtcl_latcy());
 }
 
 TEST(testResetMechanism, case1)
@@ -56,24 +78,66 @@ TEST(testResetMechanism, case1)
   leaky.setPreviousNumShift(1, 20);
   leaky.reset_mechanism(0);
   leaky.reset_mechanism(1);
-  ASSERT_EQ(32, leaky.getNeuron(0)->getSht_engy());
+  leaky.calculateLatency();
+  leaky.updateLatency();
   ASSERT_TRUE(leaky.neuronBitPosition(0, 0).empty());
+  ASSERT_EQ(DISTANCE, leaky.getNeuron(0)->getSht_engy());
+  ASSERT_EQ(7, leaky.getNeuron(0)->getIns_engy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getDel_engy());
+  ASSERT_EQ(1, leaky.getNeuron(0)->getDet_engy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getShtVrtcl_engy());
+  ASSERT_EQ(DISTANCE, leaky.getNeuron(0)->getSht_latcy());
+  ASSERT_EQ(3, leaky.getNeuron(0)->getIns_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getDel_latcy());
+  ASSERT_EQ(1, leaky.getNeuron(0)->getDet_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getShtVrtcl_latcy());
   vector<int> ans1 = {19};
-  ASSERT_EQ(52, leaky.getNeuron(1)->getSht_engy());
   ASSERT_EQ(ans1, leaky.neuronBitPosition(1, 0));
+  ASSERT_EQ(DISTANCE+20, leaky.getNeuron(1)->getSht_engy());
+  ASSERT_EQ(7, leaky.getNeuron(1)->getIns_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDel_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDet_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getShtVrtcl_engy());
+  ASSERT_EQ(DISTANCE+20, leaky.getNeuron(1)->getSht_latcy());
+  ASSERT_EQ(3, leaky.getNeuron(1)->getIns_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDel_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDet_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getShtVrtcl_latcy());
 
   leaky.setPreviousMem(1, 25);
   leaky.setPreviousNumShift(1, 5);
   leaky.reset_mechanism(1);
   vector<int> ans2 = {24};
-  ASSERT_EQ(57, leaky.getNeuron(1)->getSht_engy());
+  leaky.calculateLatency();
+  leaky.updateLatency();
   ASSERT_EQ(ans2, leaky.neuronBitPosition(1, 0));
+  ASSERT_EQ(DISTANCE+20+5, leaky.getNeuron(1)->getSht_engy());
+  ASSERT_EQ(7, leaky.getNeuron(1)->getIns_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDel_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDet_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getShtVrtcl_engy());
+  ASSERT_EQ(DISTANCE+20+5, leaky.getNeuron(1)->getSht_latcy());
+  ASSERT_EQ(3, leaky.getNeuron(1)->getIns_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDel_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDet_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getShtVrtcl_latcy());
 
   leaky.setPreviousMem(1, 32);
   leaky.setPreviousNumShift(1, 7);
   leaky.reset_mechanism(1);
-  ASSERT_EQ(82, leaky.getNeuron(1)->getSht_engy());
+  leaky.calculateLatency();
+  leaky.updateLatency();
   ASSERT_TRUE(leaky.neuronBitPosition(1, 0).empty());
+  ASSERT_EQ(DISTANCE+20+5+25, leaky.getNeuron(1)->getSht_engy());
+  ASSERT_EQ(7, leaky.getNeuron(1)->getIns_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDel_engy());
+  ASSERT_EQ(26, leaky.getNeuron(1)->getDet_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getShtVrtcl_engy());
+  ASSERT_EQ(DISTANCE+20+5+25, leaky.getNeuron(1)->getSht_latcy());
+  ASSERT_EQ(3, leaky.getNeuron(1)->getIns_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDel_latcy());
+  ASSERT_EQ(26, leaky.getNeuron(1)->getDet_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getShtVrtcl_latcy());
 }
 
 TEST(testFindZeros, case1)
@@ -91,6 +155,26 @@ TEST(testFindZeros, case1)
   unordered_set<int> ans2 = {0,1,5};
   ASSERT_EQ(ans1, res1);
   ASSERT_EQ(ans2, res2);
+  ASSERT_EQ(DISTANCE, leaky.getNeuron(0)->getSht_engy());
+  ASSERT_EQ(7, leaky.getNeuron(0)->getIns_engy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getDel_engy());
+  ASSERT_EQ(6, leaky.getNeuron(0)->getDet_engy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getShtVrtcl_engy());
+  ASSERT_EQ(DISTANCE, leaky.getNeuron(0)->getSht_latcy());
+  ASSERT_EQ(3, leaky.getNeuron(0)->getIns_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getDel_latcy());
+  ASSERT_EQ(1, leaky.getNeuron(0)->getDet_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getShtVrtcl_latcy());
+  ASSERT_EQ(DISTANCE, leaky.getNeuron(1)->getSht_engy());
+  ASSERT_EQ(7, leaky.getNeuron(1)->getIns_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDel_engy());
+  ASSERT_EQ(6, leaky.getNeuron(1)->getDet_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getShtVrtcl_engy());
+  ASSERT_EQ(DISTANCE, leaky.getNeuron(1)->getSht_latcy());
+  ASSERT_EQ(3, leaky.getNeuron(1)->getIns_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDel_latcy());
+  ASSERT_EQ(1, leaky.getNeuron(1)->getDet_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getShtVrtcl_latcy());
 }
 
 TEST(testFindNegatives, case1)
@@ -114,6 +198,26 @@ TEST(testFindNegatives, case1)
   ASSERT_EQ(-1, res1[5]);
   ASSERT_EQ(-1, res2[3]);
   ASSERT_EQ(-1, res2[4]);
+  ASSERT_EQ(DISTANCE+2, leaky.getNeuron(0)->getSht_engy());
+  ASSERT_EQ(9, leaky.getNeuron(0)->getIns_engy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getDel_engy());
+  ASSERT_EQ(12, leaky.getNeuron(0)->getDet_engy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getShtVrtcl_engy());
+  ASSERT_EQ(DISTANCE+2, leaky.getNeuron(0)->getSht_latcy());
+  ASSERT_EQ(3, leaky.getNeuron(0)->getIns_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getDel_latcy());
+  ASSERT_EQ(2, leaky.getNeuron(0)->getDet_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getShtVrtcl_latcy());
+  ASSERT_EQ(DISTANCE+2, leaky.getNeuron(1)->getSht_engy());
+  ASSERT_EQ(9, leaky.getNeuron(1)->getIns_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDel_engy());
+  ASSERT_EQ(12, leaky.getNeuron(1)->getDet_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getShtVrtcl_engy());
+  ASSERT_EQ(DISTANCE+2, leaky.getNeuron(1)->getSht_latcy());
+  ASSERT_EQ(3, leaky.getNeuron(1)->getIns_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDel_latcy());
+  ASSERT_EQ(2, leaky.getNeuron(1)->getDet_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getShtVrtcl_latcy());
 }
 
 TEST(testCalculateMem, case1)
@@ -133,6 +237,26 @@ TEST(testCalculateMem, case1)
   int res2 = leaky.calculateMem(neg2, input1, zeros2.size(), 1);
   ASSERT_EQ(21-29-15, res1);
   ASSERT_EQ(9-8-31, res2);
+  ASSERT_EQ(DISTANCE+2+29*2, leaky.getNeuron(0)->getSht_engy());
+  ASSERT_EQ(9, leaky.getNeuron(0)->getIns_engy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getDel_engy());
+  ASSERT_EQ(12+15*6+6*5+8*4, leaky.getNeuron(0)->getDet_engy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getShtVrtcl_engy());
+  ASSERT_EQ(DISTANCE+2+29*2, leaky.getNeuron(0)->getSht_latcy());
+  ASSERT_EQ(3, leaky.getNeuron(0)->getIns_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getDel_latcy());
+  ASSERT_EQ(2+29, leaky.getNeuron(0)->getDet_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(0)->getShtVrtcl_latcy());
+  ASSERT_EQ(DISTANCE+2+31*2, leaky.getNeuron(1)->getSht_engy());
+  ASSERT_EQ(9, leaky.getNeuron(1)->getIns_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDel_engy());
+  ASSERT_EQ(12+8*6+5+22*4, leaky.getNeuron(1)->getDet_engy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getShtVrtcl_engy());
+  ASSERT_EQ(DISTANCE+2+31*2, leaky.getNeuron(1)->getSht_latcy());
+  ASSERT_EQ(3, leaky.getNeuron(1)->getIns_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getDel_latcy());
+  ASSERT_EQ(2+31, leaky.getNeuron(1)->getDet_latcy());
+  ASSERT_EQ(0, leaky.getNeuron(1)->getShtVrtcl_latcy());
 }
 
 TEST(testIEEE754Constructor, case1)

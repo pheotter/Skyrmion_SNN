@@ -1,16 +1,7 @@
 #include "include/IEEE754.h"
 
-IEEE754::IEEE754(int input_size, int output_size, float beta){
-  _input_size = input_size;
-  _output_size = output_size;
+IEEE754::IEEE754(int input_size, int output_size, float beta): Parent(input_size, output_size){
   _beta = beta;
-  for (int i = 0; i < output_size; i++){
-    // one is for membrane potential, the other one is for bias
-    _neuron.emplace_back(new SkyrmionWord(input_size + 2));
-  }
-  _previous_mem.resize(output_size);
-  _weights_tmp.resize((input_size+1)*output_size);
-  _spike = torch::zeros(output_size);
   _weight_stride = make_pair(input_size, 1);
   _bias_stride = make_pair(0, 1);
   _mem_stride = make_pair(0, 1);
@@ -21,26 +12,13 @@ IEEE754::IEEE754(int input_size, int output_size, float beta){
   _mem_start = make_pair(num_weights_bias/(input_size + 2), num_weights_bias % (input_size + 2));
 }
 
-IEEE754::~IEEE754(){
-  for (int i = 0; i < _output_size; i++){
-    delete _neuron[i];
-  }
-}
-
-int IEEE754::getInputSize() const {return _input_size;}
-int IEEE754::getOutputSize() const {return _output_size;}
 float IEEE754::getDecayRate() const {return _beta;}
-int IEEE754::getPreviousMemSize() const {return _previous_mem.size();}
 pair<int,int> IEEE754::getWeightStride() const {return _weight_stride;}
 pair<int,int> IEEE754::getBiasStride() const {return _bias_stride;}
 pair<int,int> IEEE754::getMemStride() const {return _mem_stride;}
 pair<int,int> IEEE754::getWeightStart() const {return _weight_start;}
 pair<int,int> IEEE754::getBiasStart() const {return _bias_start;}
 pair<int,int> IEEE754::getMemStart() const {return _mem_start;}
-void IEEE754::setPreviousMem(int outputIndex, float f) {_previous_mem.at(outputIndex) = f;}
-vector<int> IEEE754::neuronBitPosition(int whichNeuron, int whichInterval) const {
-  return _neuron.at(whichNeuron)->bitPositions(whichInterval);
-}
 
 vector<int> IEEE754::getPlace(pair<int,int> &start, pair<int,int> &stride, int row, int col){
   if (row > _output_size -1 || row < 0 || col < 0 || col > _input_size -1){
@@ -82,25 +60,14 @@ void IEEE754::reset_mechanism(int outputIndex){ // so far we only reset to zero
   vector<int> mem_place = getPlace(_mem_start, _mem_stride, 0, outputIndex);
   if (_previous_mem.at(outputIndex) >= 1){
     // delete all skyrmions in the interval
-    sky_size_t content[DISTANCE] = {0};
-    _neuron.at(mem_place.at(0))->writeData(mem_place.at(1), DISTANCE/8, content, NAIVE, 0);
+    sky_size_t contentByte[DISTANCE/8] = {0};
+    _neuron.at(mem_place.at(0))->writeData(mem_place.at(1)*DISTANCE/8, DISTANCE/8, contentByte, NAIVE, 0);
   } else {
     sky_size_t *content = floatToBit_single(_previous_mem.at(outputIndex));
     // need to change bit to bype first (for gem5's format)
     sky_size_t *contentByte = Skyrmion::bitToByte(DISTANCE/8, content);
     _neuron.at(mem_place.at(0))->writeData(mem_place.at(1)*DISTANCE/8, DISTANCE/8, contentByte, PERMUTATION_WRITE, 0);
   }
-}
-
-unordered_set<int> IEEE754::inputIsOne(torch::Tensor &input){
-  unordered_set<int> whichWeights;
-  whichWeights.insert(0); // for membrane potential
-  for (int j = 0; j < _input_size; j++){
-    if (input[j].item<int>() == 1)
-      whichWeights.insert(j+1);
-  }
-  whichWeights.insert(_input_size+1); // for bias
-  return whichWeights;
 }
 
 unordered_map<int, vector<int>> IEEE754::placeToBeRead(unordered_set<int> &whichWeights, int outputIndex){
@@ -118,15 +85,6 @@ unordered_map<int, vector<int>> IEEE754::placeToBeRead(unordered_set<int> &which
     }
   }
   return readWhich;
-}
-
-void IEEE754::setData(int whichRaceTrack, int whichInterval, const sky_size_t *content){
-  if (whichRaceTrack < 0 || whichRaceTrack >= _output_size){
-    cout << "setData: whichRaceTrack out of range\n";
-    exit(1);
-  }
-  sky_size_t *contentByte = Skyrmion::bitToByte(DISTANCE/8, content);
-  _neuron.at(whichRaceTrack)->writeData(whichInterval*DISTANCE/8, DISTANCE/8, contentByte, NAIVE, 0);
 }
 
 float IEEE754::calculateMem(unordered_map<int, vector<int>> &readWhich){
@@ -197,14 +155,13 @@ vector<torch::Tensor> IEEE754::forward(torch::Tensor input){
 }
 
 
-
 namespace py = pybind11;
 
-PYBIND11_MODULE(ieee754_cpp, m) {
-  py::class_<IEEE754>(m, "IEEE754")
-    .def(py::init<int, int, float>())
-    .def("initialize_weights", &IEEE754::initialize_weights)
-    .def("getInputSize", &IEEE754::getInputSize)
-    .def("getOutputSize", &IEEE754::getOutputSize)
-    .def("ieee754_forward", &IEEE754::forward);
-}
+// PYBIND11_MODULE(ieee754_cpp, m) {
+//   py::class_<IEEE754>(m, "IEEE754")
+//     .def(py::init<int, int, float>())
+//     .def("initialize_weights", &IEEE754::initialize_weights)
+//     .def("getInputSize", &IEEE754::getInputSize)
+//     .def("getOutputSize", &IEEE754::getOutputSize)
+//     .def("ieee754_forward", &IEEE754::forward);
+// }

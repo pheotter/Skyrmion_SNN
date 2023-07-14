@@ -44,6 +44,46 @@ int Skyrmion::getIntervalSize() const
 	return _intervalSize;
 }
 
+void Skyrmion::addSht_latcy(int val, int saveData)
+{
+	if (saveData == 0)
+		shift_latency += val;
+	else
+		shift_latency_DMW += val;
+}
+
+void Skyrmion::addIns_latcy(int val, int saveData)
+{
+	if (saveData == 0)
+		insert_latency += val;
+	else
+		insert_latency_DMW += val;
+}
+
+void Skyrmion::addDel_latcy(int val, int saveData)
+{
+	if (saveData == 0)
+		delete_latency += val;
+	else
+		delete_latency_DMW += val;
+}
+
+void Skyrmion::addDet_latcy(int val, int saveData)
+{
+	if (saveData == 0)
+		detect_latency += val;
+	else
+		detect_latency_DMW += val;
+}
+
+void Skyrmion::addShtVrtcl_latcy(int val, int saveData)
+{
+	if (saveData == 0)
+		shiftVertcl_latency += val;
+	else
+		shiftVertcl_latency_DMW += val;
+}
+
 void Skyrmion::setId(int id)
 {
 	_id = id;

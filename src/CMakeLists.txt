@@ -10,7 +10,7 @@ find_package(PythonLibs REQUIRED)
 include_directories(${PYTHON_INCLUDE_DIRS})
 include_directories(${Torch_INCLUDE_DIRS})
 
-add_library(${PROJECT_NAME} leaky.cpp IEEE754.cpp sky.cpp)
+add_library(${PROJECT_NAME} parent.cpp leaky.cpp IEEE754.cpp sky.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_link_libraries(${PROJECT_NAME} "${TORCH_LIBRARIES}")
 target_link_libraries(${PROJECT_NAME} "${PYTHON_LIBRARIES}")

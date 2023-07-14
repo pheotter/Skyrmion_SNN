@@ -1,58 +1,36 @@
 #include "include/leaky.h"
 
-Leaky::Leaky(int input_size, int output_size){
-  _input_size = input_size;
-  _output_size = output_size;
-  for (int i = 0; i < output_size; i++){
-    // one is for membrane potential, the other one is for bias
-    _neuron.emplace_back(new SkyrmionWord(input_size + 2));
-  }
-  _previous_mem.resize(output_size);
+Leaky::Leaky(int input_size, int output_size): Parent(input_size, output_size){
   _previous_numShift.resize(output_size);
-  _weights_tmp.resize((input_size+1)*output_size);
-  _spike = torch::zeros(output_size);
 }
 
-Leaky::~Leaky(){
-  for (int i = 0; i < _output_size; i++){
-    delete _neuron[i];
-  }
+void Leaky::setPreviousNumShift(int outputIndex, int val) {
+  _previous_numShift.at(outputIndex) = val;
 }
 
-int Leaky::getInputSize() const {return _input_size;}
-int Leaky::getOutputSize() const {return _output_size;}
-int Leaky::getPreviousMemSize() const {return _previous_mem.size();}
-int Leaky::getNeuronSize() const {return _neuron.size();}
-SkyrmionWord *Leaky::getNeuron(int outputIndex) const {return _neuron.at(outputIndex);}
-void Leaky::setPreviousMem(int outputIndex, int val) {_previous_mem.at(outputIndex) = val;}
-void Leaky::setPreviousNumShift(int outputIndex, int val) {_previous_numShift.at(outputIndex) = val;}
-vector<int> Leaky::neuronBitPosition(int whichNeuron, int whichInterval) const {
-  return _neuron.at(whichNeuron)->bitPositions(whichInterval);
-}
-
-unordered_set<int> Leaky::inputIsOne(torch::Tensor &input){
-  unordered_set<int> whichWeights;
-  whichWeights.insert(0); // for membrane potential
-  for (int j = 0; j < _input_size; j++){
-    if (input[j].item<int>() == 1)
-      whichWeights.insert(j+1);
-  }
-  whichWeights.insert(_input_size+1); // for bias
-  return whichWeights;
-}
-
-void Leaky::reset_mechanism(int outputIndex){ // so far we only reset to zero
-  // Since we use one bit to represent sign bit
-  // precesion downgrades from DISTANCE to DISTANCE-1
+void Leaky::reset_mechanism(int outputIndex){
+  // so far we only implement reset-to-zero
+  // Since we use one bit to represent the sign bit
+  // precision downgrades from DISTANCE to DISTANCE-1
+  int shiftLatency = 0;
+  int detectLatency = 0;
   if (_previous_mem.at(outputIndex) >= DISTANCE-1){
+    _neuron.at(outputIndex)->addDet_latcy(1, 0);
     while (!_neuron.at(outputIndex)->detect(1, 0)){
       //shift membrane potential to right, reset to zero
       _neuron.at(outputIndex)->shift(0, 2, 0);
+      shiftLatency++;
+      detectLatency++;
     }
   } else {
-    for (int j = 0; j < _previous_numShift.at(outputIndex); j++)
+    for (int j = 0; j < _previous_numShift.at(outputIndex); j++){
       _neuron.at(outputIndex)->shift(2, 0, 0);
+      shiftLatency++;
+    }
   }
+  // update latency
+  _neuron.at(outputIndex)->addSht_latcy(shiftLatency, 0);
+  _neuron.at(outputIndex)->addDet_latcy(detectLatency, 0);
 }
 
 unordered_set<int> Leaky::findZeros(unordered_set<int> &whichWeights, int outputIndex){
@@ -61,6 +39,8 @@ unordered_set<int> Leaky::findZeros(unordered_set<int> &whichWeights, int output
     if (_neuron.at(outputIndex)->detect(position+1, 0) == 1)
       zeros.insert(position);
   }
+  // update latency (detect parallel)
+  _neuron.at(outputIndex)->addDet_latcy(1, 0);
   return zeros;
 }
 
@@ -77,28 +57,27 @@ unordered_map<int,int> Leaky::findNegatives(unordered_set<int> &whichWeights, un
   }
   // move backward
   _neuron.at(outputIndex)->shift(0, _input_size + 4, 0);
+
+  // update latency (detect parallel)
+  _neuron.at(outputIndex)->addSht_latcy(2, 0);
+  _neuron.at(outputIndex)->addDet_latcy(1, 0);
   return counters;
 }
 
-void Leaky::setData(int whichRaceTrack, int whichInterval, const sky_size_t *content){
-  if (whichRaceTrack < 0 || whichRaceTrack >= _output_size){
-    cout << "setData: whichRaceTrack out of range\n";
-    exit(1);
-  }
-  sky_size_t *contentByte = Skyrmion::bitToByte(DISTANCE/8, content);
-  _neuron.at(whichRaceTrack)->writeData(whichInterval*DISTANCE/8, DISTANCE/8, contentByte, NAIVE, 0);
-}
-
-int Leaky::calculateMem(unordered_map<int,int> &counters, unordered_set<int> &whichWeights, int zerosSize, int outputIndex) {
+int Leaky::calculateMem(unordered_map<int,int> &counters, unordered_set<int> whichWeights, int zerosSize, int outputIndex) {
   unsigned int num = 0;
   int count = 0;
+  int n = whichWeights.size();
+
   // move right to get the weights, bias and membrane potential
-  while (num != whichWeights.size() - zerosSize && count < DISTANCE-1){
+  while (num != n - zerosSize && count < DISTANCE-1){
     count++;
     _neuron.at(outputIndex)->shift(0, _input_size + 4, 0);
 
+    vector<int> toBeDeleted;
     for (auto position:whichWeights){
       if (_neuron.at(outputIndex)->detect(position+1, 0) == 1){
+        toBeDeleted.push_back(position);
         num++;
         if (counters.count(position) > 0 && counters[position] == -1){
           counters[position] *= count;
@@ -107,6 +86,7 @@ int Leaky::calculateMem(unordered_map<int,int> &counters, unordered_set<int> &wh
         }
       }
     }
+    for (auto d:toBeDeleted) whichWeights.erase(d);
   }
   // move backwards
   for (int j = 0; j < count; j++)
@@ -114,8 +94,13 @@ int Leaky::calculateMem(unordered_map<int,int> &counters, unordered_set<int> &wh
 
   // cumulate membrane potential
   int total_membrane = 0;
-  for (auto it = counters.begin(); it != counters.end(); it++)
+  for (auto it = counters.begin(); it != counters.end(); it++){
     total_membrane += it->second;
+  }
+
+  // update latency (detect parallel)
+  _neuron.at(outputIndex)->addSht_latcy(count*2, 0);
+  _neuron.at(outputIndex)->addDet_latcy(count, 0);
   return total_membrane;
 }
 
@@ -133,25 +118,30 @@ vector<double> Leaky::constructWeightsTable(){
 // bias.size() = [1000]
 void Leaky::initialize_weights(torch::Tensor weights, torch::Tensor bias){
   vector<double> weightsTable = constructWeightsTable();
+  bool negKeep = false;
 
-  // insert weight into member variable (delete after)
+  // insert weight into member variable (delete after)-----------------------
   for (int k = 0; k < _output_size; k++){
     for (int j = 0; j < _input_size; j++){
       _weights_tmp.at(k*(_input_size+1)+j) = weights[k][j].item<double>();
     }
     _weights_tmp.at(k*(_input_size+1)+_input_size) = bias[k].item<double>();
   }
+  // ------------------------------------------------------------------------
 
   for (int i = 0; i < _output_size; i++){
     // 1. ajust the weights and bias to the desired places
-    // insert skyrmions representing positive or negative
+    // insert skyrmions representing negative
     for (int j = 0; j < _input_size; j++){
       if (weights[i][j].item<double>() < 0){
         _neuron.at(i)->insert(j+2, 1, 0);
+        negKeep = true;
       }
     }
-    if (bias[i].item<double>() < 0)
+    if (bias[i].item<double>() < 0){
       _neuron.at(i)->insert(_input_size + 2, 1, 0);
+      negKeep = true;
+    }
     _neuron.at(i)->shift(_input_size + 4, 0, 0); // shift to left
 
     // insert skyrmions representing the values
@@ -188,6 +178,12 @@ void Leaky::initialize_weights(torch::Tensor weights, torch::Tensor bias){
       abs(bias[i].item<double>()) < weightsTable.at(1)){
       _neuron.at(i)->insert(_input_size + 2, 1, 0);
     }
+
+    // update latency
+    // one is for weights, and the other is for membrane potential
+    _neuron.at(i)->addIns_latcy(2, 0);
+    if (negKeep) _neuron.at(i)->addIns_latcy(1, 0);
+    _neuron.at(i)->addSht_latcy(DISTANCE, 0);
   }
 }
 
@@ -221,7 +217,8 @@ vector<torch::Tensor> Leaky::forward(torch::Tensor input){
     if (counters.count(0) == 1) membrane = counters[0];
     _previous_numShift.at(i) = total_membrane - membrane;
   }
-
+  calculateLatency();
+  updateLatency();
   torch::Tensor mem = torch::from_blob(_previous_mem.data(), {_output_size}, torch::kInt32);
 
   return {_spike, mem};
@@ -230,11 +227,11 @@ vector<torch::Tensor> Leaky::forward(torch::Tensor input){
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(leaky_cpp, m) {
-  py::class_<Leaky>(m, "Leaky")
-    .def(py::init<int, int>())
-    .def("initialize_weights", &Leaky::initialize_weights)
-    .def("getInputSize", &Leaky::getInputSize)
-    .def("getOutputSize", &Leaky::getOutputSize)
-    .def("leaky_forward", &Leaky::forward);
-}
+// PYBIND11_MODULE(leaky_cpp, m) {
+//   py::class_<Leaky>(m, "Leaky")
+//     .def(py::init<int, int>())
+//     .def("initialize_weights", &Leaky::initialize_weights)
+//     .def("getInputSize", &Leaky::getInputSize)
+//     .def("getOutputSize", &Leaky::getOutputSize)
+//     .def("leaky_forward", &Leaky::forward);
+// }

@@ -104,6 +104,11 @@ public:
 	Stat getDel_latcy_DMW() const;
 	Stat getDet_latcy_DMW() const;
 	Stat getShtVrtcl_latcy_DMW() const;
+	void addSht_latcy(int val, int saveData);
+	void addIns_latcy(int val, int saveData);
+	void addDel_latcy(int val, int saveData);
+	void addDet_latcy(int val, int saveData);
+	void addShtVrtcl_latcy(int val, int saveData);
 	void setId(int id);
 	int getId() const;
 	void setWriteType(enum Write_Type write_type);
