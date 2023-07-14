@@ -72,11 +72,19 @@ Please see the picture below:
 8. If we detect a skyrmion, and then add one to num. If the interval is in the map N and whose value is -1, and then we multiply -1 and count to store its value back to the map N. If the intervla is not in the map N, and then we store (interval, count) value into the map N.
 9. Repeat step 6~8 until num equals to size of set s minus size of set z.
 10. We add all the values in the map N and deduct one to represent the decay rate.
+##### Fig. 1
 ![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky3.png)
+##### Fig. 2
 ![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky4.png)
+##### Fig. 3
 ![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky5.png)
+##### Fig. 4
 ![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky6.png)
+##### Fig. 5
 ![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky7.png)
+##### Fig. 6
 ![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky8.png)
+##### Fig. 7
 ![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky9.png)
+##### Fig. 8
 ![image](https://github.com/pheotter/Skyrmion_SNN/blob/master/picture/sky10.png)
